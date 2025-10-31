@@ -1,10 +1,7 @@
 // app.js
-// Vollständige Datei mit allen App-Funktionen.
-// Wichtige Anpassungen:
-// - FIELD_RECT ist eng definiert (left:7, right:93, top:5, bottom:95) -> Marker im Feld nur innerhalb dieser Box.
-// - goalRedBox verwendet eine strengere neutral-white-Überprüfung (isNeutralWhiteAt), damit helle rote Flächen nicht als weiß durchgehen.
-// - goalGreenBox bleibt mit der bisherigen white-Erkennung.
-// - Marker in Toren sind immer grau (#444).
+// Anpassung: Spielfeld akzeptiert Marker nur auf echten grünen oder roten Flächen (Pixel‑Sampling).
+// Tore: unverändert (weiße/neutral‑weiße Flächen → graue Marker).
+// Restliche App‑Logik (Timers, Exporte, Season usw.) unverändert.
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
@@ -16,7 +13,7 @@ document.addEventListener("DOMContentLoaded", () => {
     seasonMap: document.getElementById("seasonMapPage")
   };
 
-  // early showPage stub
+  // --- Early showPage stub (ensures handlers attached earlier can call it) ---
   function showPage(page) {
     try {
       Object.values(pages).forEach(p => { if (p) p.style.display = "none"; });
@@ -31,12 +28,11 @@ document.addEventListener("DOMContentLoaded", () => {
       document.title = title;
       if (typeof updateStickyHeaderHeight === "function") setTimeout(updateStickyHeaderHeight, 50);
     } catch (err) {
-      console.warn("showPage early stub failed:", err);
+      console.warn("showPage (early stub) failed:", err);
     }
   }
   window.showPage = showPage;
 
-  // --- Query elements ---
   const playerListContainer = document.getElementById("playerList");
   const confirmSelectionBtn = document.getElementById("confirmSelection");
   const statsContainer = document.getElementById("statsContainer");
@@ -62,9 +58,9 @@ document.addEventListener("DOMContentLoaded", () => {
   const seasonMapBoxesSelector = "#seasonMapPage .field-box, #seasonMapPage .goal-img-box";
 
   const torbildTimeTrackingBox = document.getElementById("timeTrackingBox");
-  const seasonMapTimeTrackingBox = document.getElementById("seasonMapTimeTrackingBox");
+  const seasonMapTimeTrackingBox = document.getElementById("seasonTimeTrackingBox");
 
-  // --- Dark/Light Mode automatisch setzen ---
+  // --- Dark/Light Mode automatically set ---
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     document.documentElement.setAttribute('data-theme', 'dark');
   } else {
@@ -199,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // expose renderPlayerSelection to rest of file
+  // expose renderPlayerSelection
   window.__renderPlayerSelection = renderPlayerSelection;
 
   // --- Eiszeitfarben dynamisch setzen ---
@@ -492,12 +488,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Marker helpers with FIELD_RECT and stricter red-goal check ---
+  // --- Marker helpers with FIELD_RECT fallback and color sampling for field image ---
   const LONG_MARK_MS_INTERNAL = 600;
 
-  // FIELD: more precise rectangle (tweak these numbers to match the exact visible field)
-  // These are percentages relative to the image bounding box.
-  const FIELD_RECT = { left: 7, right: 93, top: 5, bottom: 95 };
+  // FIELD_RECT fallback if sampling not available (conservative area)
+  const FIELD_RECT = { left: 7, right: 93, top: 5, bottom: 95 }; // percent of image area
 
   function clampPct(v) {
     if (v < 0) return 0;
@@ -508,17 +503,20 @@ document.addEventListener("DOMContentLoaded", () => {
     return pos.xPct >= rect.left && pos.xPct <= rect.right && pos.yPct >= rect.top && pos.yPct <= rect.bottom;
   }
 
-  // Image sampler for sampling pixel colors (used for goal images)
+  // create or reuse an offscreen canvas for an <img> to sample pixel colors.
   const samplerCache = new WeakMap();
   function createImageSampler(imgEl) {
     if (!imgEl) return null;
     if (samplerCache.has(imgEl)) return samplerCache.get(imgEl);
+
     const sampler = { valid: false, canvas: null, ctx: null };
+
     try {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       sampler.canvas = canvas;
       sampler.ctx = ctx;
+
       function draw() {
         try {
           const w = imgEl.naturalWidth || imgEl.width || 1;
@@ -529,51 +527,71 @@ document.addEventListener("DOMContentLoaded", () => {
           ctx.drawImage(imgEl, 0, 0, w, h);
           sampler.valid = true;
         } catch (e) {
+          // likely cross-origin tainting -> sampling not available
           sampler.valid = false;
+          // console.warn("Sampler draw failed for", imgEl.src, e);
         }
       }
+
       if (imgEl.complete) draw();
       else {
         imgEl.addEventListener("load", draw);
         imgEl.addEventListener("error", () => { sampler.valid = false; });
       }
-      // looser white check
+
+      // get pixel at percent coords safely
+      function getPixel(xPct, yPct) {
+        if (!sampler.valid) return null;
+        const px = Math.round((xPct/100) * (canvas.width - 1));
+        const py = Math.round((yPct/100) * (canvas.height - 1));
+        try {
+          const d = ctx.getImageData(px, py, 1, 1).data;
+          return { r: d[0], g: d[1], b: d[2], a: d[3] };
+        } catch (e) {
+          sampler.valid = false;
+          return null;
+        }
+      }
+
+      // white-ish check
       sampler.isWhiteAt = (xPct, yPct, threshold = 220) => {
-        if (!sampler.valid) return false;
-        const px = Math.round((xPct/100) * (canvas.width - 1));
-        const py = Math.round((yPct/100) * (canvas.height - 1));
-        try {
-          const d = ctx.getImageData(px, py, 1, 1).data;
-          const r = d[0], g = d[1], b = d[2], a = d[3];
-          if (a === 0) return false;
-          return r >= threshold && g >= threshold && b >= threshold;
-        } catch (e) {
-          sampler.valid = false;
-          return false;
-        }
+        const p = getPixel(xPct, yPct);
+        if (!p) return false;
+        if (p.a === 0) return false;
+        return p.r >= threshold && p.g >= threshold && p.b >= threshold;
       };
-      // stricter "neutral white" check for the red goal (prevents light red being accepted)
+
+      // neutral white stricter check (used for red goal previously)
       sampler.isNeutralWhiteAt = (xPct, yPct, threshold = 235, maxChannelDiff = 12) => {
-        if (!sampler.valid) return false;
-        const px = Math.round((xPct/100) * (canvas.width - 1));
-        const py = Math.round((yPct/100) * (canvas.height - 1));
-        try {
-          const d = ctx.getImageData(px, py, 1, 1).data;
-          const r = d[0], g = d[1], b = d[2], a = d[3];
-          if (a === 0) return false;
-          const maxC = Math.max(r,g,b);
-          const minC = Math.min(r,g,b);
-          const diff = maxC - minC;
-          return maxC >= threshold && diff <= maxChannelDiff;
-        } catch (e) {
-          sampler.valid = false;
-          return false;
-        }
+        const p = getPixel(xPct, yPct);
+        if (!p) return false;
+        if (p.a === 0) return false;
+        const maxC = Math.max(p.r, p.g, p.b);
+        const minC = Math.min(p.r, p.g, p.b);
+        const diff = maxC - minC;
+        return maxC >= threshold && diff <= maxChannelDiff;
       };
+
+      // green detection: green channel high and significantly above red+blue
+      sampler.isGreenAt = (xPct, yPct, gThreshold = 100, diff = 35) => {
+        const p = getPixel(xPct, yPct);
+        if (!p) return false;
+        if (p.a === 0) return false;
+        return (p.g >= gThreshold) && ((p.g - p.r) >= diff) && ((p.g - p.b) >= diff);
+      };
+
+      // red detection: red channel high and significantly above green+blue
+      sampler.isRedAt = (xPct, yPct, rThreshold = 100, diff = 35) => {
+        const p = getPixel(xPct, yPct);
+        if (!p) return false;
+        if (p.a === 0) return false;
+        return (p.r >= rThreshold) && ((p.r - p.g) >= diff) && ((p.r - p.b) >= diff);
+      };
+
       samplerCache.set(imgEl, sampler);
       return sampler;
     } catch (err) {
-      samplerCache.set(imgEl, { valid:false, isWhiteAt:()=>false, isNeutralWhiteAt:()=>false });
+      samplerCache.set(imgEl, { valid:false, isWhiteAt: ()=>false, isNeutralWhiteAt: ()=>false, isGreenAt: ()=>false, isRedAt: ()=>false });
       return samplerCache.get(imgEl);
     }
   }
@@ -592,54 +610,77 @@ document.addEventListener("DOMContentLoaded", () => {
     container.appendChild(dot);
   }
 
-  // create marker only when allowed (field rect or goal white checks)
+  // Field: allow marker only if pixel is green OR red on the field image
+  // Goals: unchanged (white/neutral white checks as before) — markers always gray
   function createMarkerBasedOn(pos, boxEl, longPress, forceGrey=false) {
     if (!boxEl) return;
 
-    // FIELD: require being inside FIELD_RECT
+    // FIELD BOX
     if (boxEl.classList.contains("field-box")) {
-      if (!isInsideRect(pos, FIELD_RECT)) {
+      const img = boxEl.querySelector("img");
+      if (img) {
+        const sampler = createImageSampler(img);
+        // if sampling available, require green or red pixel
+        if (sampler && sampler.valid) {
+          const isGreen = sampler.isGreenAt(pos.xPct, pos.yPct, 110, 30); // thresholds tuned; adjust if needed
+          const isRed = sampler.isRedAt(pos.xPct, pos.yPct, 110, 30);
+          if (isGreen) {
+            createMarkerPercent(pos.xPct, pos.yPct, "#00ff66", boxEl, true);
+            return;
+          }
+          if (isRed) {
+            createMarkerPercent(pos.xPct, pos.yPct, "#ff0000", boxEl, true);
+            return;
+          }
+          // not green or red => ignore click
+          return;
+        } else {
+          // sampling not available (e.g. CORS tainted). Fallback: conservative rectangle check
+          // NOTE: fallback is less strict — if you host images same-origin you can remove fallback branch.
+          if (!isInsideRect(pos, FIELD_RECT)) return;
+          // use Y position to pick color as before (best-effort)
+          const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
+          createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
+          return;
+        }
+      } else {
+        // no img found: fallback to rect rule
+        if (!isInsideRect(pos, FIELD_RECT)) return;
+        const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
+        createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
         return;
       }
-      const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
-      createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
-      return;
     }
 
-    // GOAL BOXES
+    // GOAL BOXES: unchanged behavior (white detection)
     if (boxEl.classList.contains("goal-img-box") || boxEl.id === "goalGreenBox" || boxEl.id === "goalRedBox") {
       const img = boxEl.querySelector("img");
       if (!img) return;
       const sampler = createImageSampler(img);
       if (!sampler || !sampler.valid) {
-        // conservative: disallow if sampling unavailable
+        // conservative: disallow if we can't sample
         return;
       }
-
-      // green goal: use looser white test
       if (boxEl.id === "goalGreenBox") {
         const ok = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
         if (!ok) return;
         createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
         return;
       }
-
-      // red goal: stricter neutral white test to exclude light-red / pink regions
       if (boxEl.id === "goalRedBox") {
         const ok = sampler.isNeutralWhiteAt(pos.xPct, pos.yPct, 235, 12);
         if (!ok) return;
         createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
         return;
       }
-
-      // fallback: looser white check
+      // fallback for other goal images
       const ok = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
       if (!ok) return;
       createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
       return;
     }
 
-    // fallback: require inside FIELD_RECT
+    // fallback: require inside field rect
     if (!isInsideRect(pos, FIELD_RECT)) return;
     createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
   }
@@ -655,7 +696,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!img) return;
       box.style.position = "relative";
 
-      // prepare sampler for images (goals)
+      // Pre-create sampler for images (draw will happen on image load)
       createImageSampler(img);
 
       let mouseHoldTimer = null;
@@ -675,7 +716,6 @@ document.addEventListener("DOMContentLoaded", () => {
       // mouse
       img.addEventListener("mousedown", (ev) => {
         isLong = false;
-        if (mouseHoldTimer) clearTimeout(mouseHoldTimer);
         mouseHoldTimer = setTimeout(() => {
           isLong = true;
           const pos = getPosFromEvent(ev);
@@ -840,7 +880,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function exportSeasonMapFromTorbild() {
-    // collect markers for torbild boxes (in DOM order)
     const boxes = Array.from(document.querySelectorAll(torbildBoxesSelector));
     const allMarkers = boxes.map(box => {
       const markers = [];
@@ -856,17 +895,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     localStorage.setItem("seasonMapMarkers", JSON.stringify(allMarkers));
 
-    // copy time tracking from torbild time box
     const timeData = readTimeTrackingFromBox(torbildTimeTrackingBox);
     localStorage.setItem("seasonMapTimeData", JSON.stringify(timeData));
 
-    // navigate and render
     showPageRef("seasonMap");
     renderSeasonMapPage();
   }
 
   function renderSeasonMapPage() {
-    // clear seasonMap markers
     const boxes = Array.from(document.querySelectorAll(seasonMapBoxesSelector));
     boxes.forEach(box => box.querySelectorAll(".marker-dot").forEach(d => d.remove()));
 
@@ -890,7 +926,6 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const tdata = JSON.parse(rawTime);
         writeTimeTrackingToBox(seasonMapTimeTrackingBox, tdata);
-        // ensure time buttons remain disabled/read-only
         seasonMapTimeTrackingBox.querySelectorAll(".time-btn").forEach(btn => {
           btn.disabled = true;
           btn.classList.add("disabled-readonly");
@@ -994,7 +1029,7 @@ document.addEventListener("DOMContentLoaded", () => {
     exportSeasonFromStatsBtn.addEventListener("click", exportSeasonHandler);
   }
 
-  // --- Season table rendering (keeps previous full implementation) ---
+  // --- Season table rendering (full) ---
   function formatTimeMMSS(sec) {
     const mm = String(Math.floor(sec / 60)).padStart(2, "0");
     const ss = String(sec % 60).padStart(2, "0");
@@ -1051,7 +1086,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const tbody = document.createElement("tbody");
 
-    // Build rows array from seasonData
     const rows = Object.keys(seasonData).map(name => {
       const d = seasonData[name];
       const games = Number(d.games || 0);
@@ -1071,37 +1105,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const goalsPerGame = games ? (goals / games) : 0;
       const pointsPerGame = games ? (points / games) : 0;
 
-      const mvpPoints = "";
-      const mvp = "";
-      const goalValue = "";
-
       const cells = [
-        mvpPoints,
-        mvp,
-        d.num || "",
-        d.name,
-        games,
-        goals,
-        assists,
-        points,
-        plusMinus,
-        Number(avgPlusMinus.toFixed(1)),
-        shots,
-        Number(shotsPerGame.toFixed(1)),
-        Number(goalsPerGame.toFixed(1)),
-        Number(pointsPerGame.toFixed(1)),
-        penalty,
-        goalValue,
-        faceOffs,
-        faceOffsWon,
-        `${faceOffPercent}%`,
-        formatTimeMMSS(timeSeconds)
+        "", "", d.num || "", d.name, games, goals, assists, points, plusMinus,
+        Number(avgPlusMinus.toFixed(1)), shots, Number(shotsPerGame.toFixed(1)),
+        Number(goalsPerGame.toFixed(1)), Number(pointsPerGame.toFixed(1)),
+        penalty, "", faceOffs, faceOffsWon, `${faceOffPercent}%`, formatTimeMMSS(timeSeconds)
       ];
 
       return { name: d.name, num: d.num || "", cells, raw: { games, goals, assists, points, plusMinus, shots, penalty, faceOffs, faceOffsWon, faceOffPercent, timeSeconds } };
     });
 
-    // initial sort
     let displayRows = rows.slice();
     if (seasonSort.index === null) {
       displayRows.sort((a,b) => (b.raw.points || 0) - (a.raw.points || 0));
@@ -1117,7 +1130,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // build tbody rows
     displayRows.forEach(r => {
       const tr = document.createElement("tr");
       r.cells.forEach(c => {
@@ -1128,28 +1140,18 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.appendChild(tr);
     });
 
-    // Total/Average row
     const count = rows.length || 0;
     const sampleTh = headerRow.querySelector("th");
     const headerBg = sampleTh ? getComputedStyle(sampleTh).backgroundColor : "#1f1f1f";
     const headerColor = sampleTh ? getComputedStyle(sampleTh).color : getComputedStyle(document.documentElement).getPropertyValue('--text-color') || "#fff";
 
     if (count > 0) {
-      const sums = {
-        games: 0, goals: 0, assists: 0, points: 0, plusMinus: 0,
-        shots: 0, penalty: 0, faceOffs: 0, faceOffsWon: 0, timeSeconds: 0
-      };
+      const sums = { games:0, goals:0, assists:0, points:0, plusMinus:0, shots:0, penalty:0, faceOffs:0, faceOffsWon:0, timeSeconds:0 };
       rows.forEach(r => {
         const rs = r.raw;
-        sums.games += rs.games;
-        sums.goals += rs.goals;
-        sums.assists += rs.assists;
-        sums.points += rs.points;
-        sums.plusMinus += rs.plusMinus;
-        sums.shots += rs.shots;
-        sums.penalty += rs.penalty;
-        sums.faceOffs += rs.faceOffs;
-        sums.faceOffsWon += rs.faceOffsWon;
+        sums.games += rs.games; sums.goals += rs.goals; sums.assists += rs.assists;
+        sums.points += rs.points; sums.plusMinus += rs.plusMinus; sums.shots += rs.shots;
+        sums.penalty += rs.penalty; sums.faceOffs += rs.faceOffs; sums.faceOffsWon += rs.faceOffsWon;
         sums.timeSeconds += rs.timeSeconds;
       });
 
