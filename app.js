@@ -1,10 +1,10 @@
 // app.js
-// Vollständig bereinigte Version:
-// - showPage wird früh verfügbar gemacht (kein ReferenceError mehr)
-// - Alle Form-Inputs in Spielerauswahl bekommen name/id Attribute (Autofill/Lighthouse)
-// - Keine eval/new Function oder setTimeout/setInterval mit String-Args verwendet
-// - Season Map read-only (Marker nur per Export aus Goal Map)
-// - Timer-Button ist links + heller
+// Vollständig aktualisierte Version mit UI-Positionen / Klassen wie gewünscht:
+// - Export Season buttons haben Klasse .season-btn (blaues Aussehen in CSS)
+// - Goal Map: Export Season Map neben Zurück, Reset ganz rechts
+// - Season Map: Reset ist rechts
+// - Keine eval/new Function oder setTimeout/setInterval mit String-Args
+// - showPage stub exists early and full implementation overwrites it later
 // Persistenz via localStorage.
 
 document.addEventListener("DOMContentLoaded", () => {
@@ -18,7 +18,6 @@ document.addEventListener("DOMContentLoaded", () => {
   };
 
   // --- Early showPage stub (ensures handlers attached earlier can call it) ---
-  // Will be overwritten by the full implementation later in the file.
   function showPage(page) {
     try {
       Object.values(pages).forEach(p => { if (p) p.style.display = "none"; });
@@ -735,7 +734,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("seasonMapTimeData", JSON.stringify(timeData));
 
     // navigate and render
-    showPage("seasonMap");
+    showPageRef("seasonMap");
     renderSeasonMapPage();
   }
 
@@ -793,11 +792,11 @@ document.addEventListener("DOMContentLoaded", () => {
 
   if (seasonMapBtn) {
     seasonMapBtn.addEventListener("click", () => {
-      showPage("seasonMap");
+      showPageRef("seasonMap");
       renderSeasonMapPage();
     });
   }
-  if (backToStatsFromSeasonMapBtn) backToStatsFromSeasonMapBtn.addEventListener("click", () => showPage("stats"));
+  if (backToStatsFromSeasonMapBtn) backToStatsFromSeasonMapBtn.addEventListener("click", () => showPageRef("stats"));
   if (resetSeasonMapBtn) resetSeasonMapBtn.addEventListener("click", resetSeasonMap);
 
   // --- Season export (Stats -> Season) ---
@@ -858,7 +857,7 @@ document.addEventListener("DOMContentLoaded", () => {
       renderStatsTable();
     }
 
-    showPage("season");
+    showPageRef("season");
     renderSeasonTable();
 
     alert("Daten wurden als Spiel in die Season-Tabelle übernommen.");
@@ -869,7 +868,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   // --- Season table rendering (full, with sorting and total row) ---
-  // utility
   function formatTimeMMSS(sec) {
     const mm = String(Math.floor(sec / 60)).padStart(2, "0");
     const ss = String(sec % 60).padStart(2, "0");
@@ -941,15 +939,14 @@ document.addEventListener("DOMContentLoaded", () => {
       const faceOffPercent = faceOffs ? Math.round((faceOffsWon / faceOffs) * 100) : 0;
       const timeSeconds = Number(d.timeSeconds || 0);
 
-      // per-game metrics with one decimal as requested earlier
       const avgPlusMinus = games ? (plusMinus / games) : 0;
       const shotsPerGame = games ? (shots / games) : 0;
       const goalsPerGame = games ? (goals / games) : 0;
       const pointsPerGame = games ? (points / games) : 0;
 
-      const mvpPoints = ""; // left empty
+      const mvpPoints = "";
       const mvp = "";
-      const goalValue = ""; // left empty
+      const goalValue = "";
 
       const cells = [
         mvpPoints,
@@ -1004,7 +1001,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.appendChild(tr);
     });
 
-    // --- Total/Average row (Total Ø) ---
+    // Total/Average row
     const count = rows.length || 0;
     const sampleTh = headerRow.querySelector("th");
     const headerBg = sampleTh ? getComputedStyle(sampleTh).backgroundColor : "#1f1f1f";
@@ -1101,7 +1098,6 @@ document.addEventListener("DOMContentLoaded", () => {
     table.appendChild(tbody);
     container.appendChild(table);
 
-    // Sorting behavior
     function updateSortUI() {
       const ths = table.querySelectorAll("th.sortable");
       ths.forEach(th => {
@@ -1123,7 +1119,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const idx = Number(th.dataset.colIndex);
         if (seasonSort.index === idx) seasonSort.asc = !seasonSort.asc;
         else { seasonSort.index = idx; seasonSort.asc = true; }
-        // update and re-render
         seasonSort.index = idx;
         renderSeasonTable();
       });
@@ -1160,12 +1155,10 @@ document.addEventListener("DOMContentLoaded", () => {
     alert("Season-Daten gelöscht.");
   }
 
-  // bind reset buttons
   document.getElementById("resetBtn")?.addEventListener("click", resetStatsPage);
   document.getElementById("resetTorbildBtn")?.addEventListener("click", resetTorbildPage);
   document.getElementById("resetSeasonBtn")?.addEventListener("click", resetSeasonPage);
 
-  // bind reset season map
   document.getElementById("resetSeasonMapBtn")?.addEventListener("click", resetSeasonMap);
 
   // --- Pages navigation helpers (full implementation, overwrites early stub) ---
@@ -1174,7 +1167,6 @@ document.addEventListener("DOMContentLoaded", () => {
     if (pages[page]) pages[page].style.display = "block";
     localStorage.setItem("currentPage", page);
 
-    // Titel anpassen
     let title = "Spielerstatistik";
     if (page === "selection") title = "Spielerauswahl";
     else if (page === "stats") title = "Statistiken";
@@ -1185,9 +1177,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     setTimeout(updateStickyHeaderHeight, 50);
   }
-  // overwrite earlier stub
   window.showPage = showPageFull;
-  // keep local reference
   const showPageRef = window.showPage;
 
   selectPlayersBtn?.addEventListener("click", () => showPageRef("selection"));
