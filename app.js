@@ -1,7 +1,10 @@
 // app.js
-// Anpassung: Spielfeld-Box (FIELD_RECT) definiert; Marker auf Spielfeld nur innerhalb dieser Box erlaubt.
-// Tore bleiben per white-area Sampling wie zuvor (Marker in Toren sind grau).
-// Restliche App-Funktionalität (Timer, Exporte, Season, etc.) enthalten.
+// Vollständige Datei mit allen App-Funktionen.
+// Wichtige Anpassungen:
+// - FIELD_RECT ist eng definiert (left:7, right:93, top:5, bottom:95) -> Marker im Feld nur innerhalb dieser Box.
+// - goalRedBox verwendet eine strengere neutral-white-Überprüfung (isNeutralWhiteAt), damit helle rote Flächen nicht als weiß durchgehen.
+// - goalGreenBox bleibt mit der bisherigen white-Erkennung.
+// - Marker in Toren sind immer grau (#444).
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
@@ -13,7 +16,7 @@ document.addEventListener("DOMContentLoaded", () => {
     seasonMap: document.getElementById("seasonMapPage")
   };
 
-  // --- Early showPage stub (ensures handlers attached earlier can call it) ---
+  // early showPage stub
   function showPage(page) {
     try {
       Object.values(pages).forEach(p => { if (p) p.style.display = "none"; });
@@ -28,11 +31,12 @@ document.addEventListener("DOMContentLoaded", () => {
       document.title = title;
       if (typeof updateStickyHeaderHeight === "function") setTimeout(updateStickyHeaderHeight, 50);
     } catch (err) {
-      console.warn("showPage (early stub) failed:", err);
+      console.warn("showPage early stub failed:", err);
     }
   }
   window.showPage = showPage;
 
+  // --- Query elements ---
   const playerListContainer = document.getElementById("playerList");
   const confirmSelectionBtn = document.getElementById("confirmSelection");
   const statsContainer = document.getElementById("statsContainer");
@@ -58,7 +62,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const seasonMapBoxesSelector = "#seasonMapPage .field-box, #seasonMapPage .goal-img-box";
 
   const torbildTimeTrackingBox = document.getElementById("timeTrackingBox");
-  const seasonMapTimeTrackingBox = document.getElementById("seasonTimeTrackingBox");
+  const seasonMapTimeTrackingBox = document.getElementById("seasonMapTimeTrackingBox");
 
   // --- Dark/Light Mode automatisch setzen ---
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -488,12 +492,12 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Marker helpers with FIELD_RECT (fixed box) and goal sampling ---
-  const LONG_MARK_MS = 600;
+  // --- Marker helpers with FIELD_RECT and stricter red-goal check ---
+  const LONG_MARK_MS_INTERNAL = 600;
 
-  // FIELD: use a fixed rectangle (percent) to allow placements only inside real field
-  // Anpassbare Werte: passe diese an, bis Marker nur innerhalb tatsächlicher Spielfeldfläche landen.
-  const FIELD_RECT = { left: 6, right: 94, top: 4, bottom: 96 }; // in Percent (0..100)
+  // FIELD: more precise rectangle (tweak these numbers to match the exact visible field)
+  // These are percentages relative to the image bounding box.
+  const FIELD_RECT = { left: 7, right: 93, top: 5, bottom: 95 };
 
   function clampPct(v) {
     if (v < 0) return 0;
@@ -504,7 +508,7 @@ document.addEventListener("DOMContentLoaded", () => {
     return pos.xPct >= rect.left && pos.xPct <= rect.right && pos.yPct >= rect.top && pos.yPct <= rect.bottom;
   }
 
-  // Image sampler for goal boxes (white area detection)
+  // Image sampler for sampling pixel colors (used for goal images)
   const samplerCache = new WeakMap();
   function createImageSampler(imgEl) {
     if (!imgEl) return null;
@@ -533,6 +537,7 @@ document.addEventListener("DOMContentLoaded", () => {
         imgEl.addEventListener("load", draw);
         imgEl.addEventListener("error", () => { sampler.valid = false; });
       }
+      // looser white check
       sampler.isWhiteAt = (xPct, yPct, threshold = 220) => {
         if (!sampler.valid) return false;
         const px = Math.round((xPct/100) * (canvas.width - 1));
@@ -547,10 +552,28 @@ document.addEventListener("DOMContentLoaded", () => {
           return false;
         }
       };
+      // stricter "neutral white" check for the red goal (prevents light red being accepted)
+      sampler.isNeutralWhiteAt = (xPct, yPct, threshold = 235, maxChannelDiff = 12) => {
+        if (!sampler.valid) return false;
+        const px = Math.round((xPct/100) * (canvas.width - 1));
+        const py = Math.round((yPct/100) * (canvas.height - 1));
+        try {
+          const d = ctx.getImageData(px, py, 1, 1).data;
+          const r = d[0], g = d[1], b = d[2], a = d[3];
+          if (a === 0) return false;
+          const maxC = Math.max(r,g,b);
+          const minC = Math.min(r,g,b);
+          const diff = maxC - minC;
+          return maxC >= threshold && diff <= maxChannelDiff;
+        } catch (e) {
+          sampler.valid = false;
+          return false;
+        }
+      };
       samplerCache.set(imgEl, sampler);
       return sampler;
     } catch (err) {
-      samplerCache.set(imgEl, { valid:false, isWhiteAt: ()=>false });
+      samplerCache.set(imgEl, { valid:false, isWhiteAt:()=>false, isNeutralWhiteAt:()=>false });
       return samplerCache.get(imgEl);
     }
   }
@@ -569,37 +592,54 @@ document.addEventListener("DOMContentLoaded", () => {
     container.appendChild(dot);
   }
 
-  // createMarkerBasedOn: FIELD uses FIELD_RECT; GOAL uses white-area sampling and gray markers
+  // create marker only when allowed (field rect or goal white checks)
   function createMarkerBasedOn(pos, boxEl, longPress, forceGrey=false) {
     if (!boxEl) return;
 
-    // FIELD: only allow placements within FIELD_RECT
+    // FIELD: require being inside FIELD_RECT
     if (boxEl.classList.contains("field-box")) {
       if (!isInsideRect(pos, FIELD_RECT)) {
         return;
       }
-      // keep existing field coloring (green/red depending on y)
       const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
       createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
       return;
     }
 
-    // GOAL: sample pixel and require white-ish; markers always gray
+    // GOAL BOXES
     if (boxEl.classList.contains("goal-img-box") || boxEl.id === "goalGreenBox" || boxEl.id === "goalRedBox") {
       const img = boxEl.querySelector("img");
       if (!img) return;
       const sampler = createImageSampler(img);
       if (!sampler || !sampler.valid) {
-        // conservative: disallow if we can't sample
+        // conservative: disallow if sampling unavailable
         return;
       }
-      const isWhite = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
-      if (!isWhite) return;
+
+      // green goal: use looser white test
+      if (boxEl.id === "goalGreenBox") {
+        const ok = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
+        if (!ok) return;
+        createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
+        return;
+      }
+
+      // red goal: stricter neutral white test to exclude light-red / pink regions
+      if (boxEl.id === "goalRedBox") {
+        const ok = sampler.isNeutralWhiteAt(pos.xPct, pos.yPct, 235, 12);
+        if (!ok) return;
+        createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
+        return;
+      }
+
+      // fallback: looser white check
+      const ok = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
+      if (!ok) return;
       createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
       return;
     }
 
-    // fallback: disallow outside field rect
+    // fallback: require inside FIELD_RECT
     if (!isInsideRect(pos, FIELD_RECT)) return;
     createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
   }
@@ -640,7 +680,7 @@ document.addEventListener("DOMContentLoaded", () => {
           isLong = true;
           const pos = getPosFromEvent(ev);
           createMarkerBasedOn(pos, box, true);
-        }, LONG_MARK_MS);
+        }, LONG_MARK_MS_INTERNAL);
       });
 
       img.addEventListener("mouseup", (ev) => {
@@ -671,7 +711,7 @@ document.addEventListener("DOMContentLoaded", () => {
           isLong = true;
           const pos = getPosFromEvent(ev.touches[0]);
           createMarkerBasedOn(pos, box, true);
-        }, LONG_MARK_MS);
+        }, LONG_MARK_MS_INTERNAL);
       }, { passive: true });
 
       img.addEventListener("touchend", (ev) => {
@@ -884,7 +924,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   if (backToStatsFromSeasonMapBtn) backToStatsFromSeasonMapBtn.addEventListener("click", () => showPageRef("stats"));
-  if (resetSeasonMapBtn) resetSeasonMapBtn.addEventListener("click", resetSeasonMap);
+  if (document.getElementById("resetSeasonMapBtn")) document.getElementById("resetSeasonMapBtn").addEventListener("click", resetSeasonMap);
 
   // --- Season export (Stats -> Season) ---
   const exportSeasonHandler = () => {
@@ -954,7 +994,7 @@ document.addEventListener("DOMContentLoaded", () => {
     exportSeasonFromStatsBtn.addEventListener("click", exportSeasonHandler);
   }
 
-  // --- Season table rendering (full, with sorting and total row) ---
+  // --- Season table rendering (keeps previous full implementation) ---
   function formatTimeMMSS(sec) {
     const mm = String(Math.floor(sec / 60)).padStart(2, "0");
     const ss = String(sec % 60).padStart(2, "0");
@@ -1026,7 +1066,6 @@ document.addEventListener("DOMContentLoaded", () => {
       const faceOffPercent = faceOffs ? Math.round((faceOffsWon / faceOffs) * 100) : 0;
       const timeSeconds = Number(d.timeSeconds || 0);
 
-      // per-game metrics with one decimal
       const avgPlusMinus = games ? (plusMinus / games) : 0;
       const shotsPerGame = games ? (shots / games) : 0;
       const goalsPerGame = games ? (goals / games) : 0;
@@ -1186,7 +1225,6 @@ document.addEventListener("DOMContentLoaded", () => {
     table.appendChild(tbody);
     container.appendChild(table);
 
-    // Sorting UI
     function updateSortUI() {
       const ths = table.querySelectorAll("th.sortable");
       ths.forEach(th => {
