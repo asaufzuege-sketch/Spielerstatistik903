@@ -143,11 +143,11 @@ h1 {
   z-index: 50;
   background: var(--header-bg);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-  border-radius: 8px;
-  margin-bottom: 10px;
-  padding: 8px 12px;
+  border-radius: 8px;   /* abgerundete Ecken */
+  margin-bottom: 10px;  /* Abstand zur Tabelle */
+  padding: 8px 12px;    /* innen Platz für die Buttons */
   display: flex;
-  justify-content: center;
+  justify-content: center; /* Buttons zentriert */
   align-items: center;
 }
 
@@ -251,6 +251,7 @@ td[data-player] {
   cursor: pointer;
   transition: transform 0.08s, background 0.08s;
 }
+
 td[data-player]:active {
   transform: scale(1.12);
   background: #222;
@@ -308,6 +309,7 @@ th .sort-arrow { font-size: 0.7rem; color: #ddd }
   border-radius: 8px;
 }
 
+/* Rechte Spalte (Tore & Zeittracking) */
 .goal-column {
   flex: 1;
   display: flex;
