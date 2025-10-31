@@ -324,7 +324,7 @@ th .sort-arrow { font-size: 0.7rem; color: #ddd }
   gap: 15px;
 }
 
-/* marker dots: keep size visible on white backgrounds */
+/* marker dots */
 .marker-dot {
   position: absolute;
   width: 14px;
