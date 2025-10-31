@@ -1,0 +1,547 @@
+:root {
+  /* Grundfarben Light Mode */
+  --bg-color: #ffffff;
+  --text-color: #000000;
+  --header-bg: #222222;
+  --row-even: #f0f0f0;
+  --row-odd: #e0e0e0;
+
+  /* Tabellenfarben */
+  --cell-pos-color: #00c06f;
+  --cell-neg-color: #ff4c4c;
+  --cell-zero-color: #000000;
+
+  /* Buttons / Timer */
+  --btn-top-bg: #c8fbc8;
+  --btn-bottom-bg: #ffe7e7;
+  --timer-active-color: #005c2f;
+
+  /* Layout */
+  --sticky-header-height: 56px;
+
+  /* Torbildfarben */
+  --ice-top: #00c06f;
+  --ice-bottom: #ff4c4c;
+}
+/* Dark Mode */
+[data-theme="dark"] {
+  --bg-color: #111111;
+  --text-color: #ffffff;
+  --header-bg: #333333;
+  --row-even: #333333;
+  --row-odd: #4a4a4a;
+
+  --cell-pos-color: #00ff80;
+  --cell-neg-color: #ff4c4c;
+  --cell-zero-color: #ffffff;
+}
+body {
+  margin: 0;
+  font-family: "Segoe UI", sans-serif;
+  background-color: var(--bg-color);
+  color: var(--text-color);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  min-height: 100vh;
+  padding: 20px;
+}
+
+.page {
+  width: 100%;
+  max-width: 1100px;
+}
+
+/* =========================================
+   TYPOGRAFIE
+   ========================================= */
+h1 {
+  text-align: center;
+  color: var(--cell-pos-color);
+}
+
+.center-text {
+  text-align: center;
+  color: #888;
+  margin-top: 6px;
+}
+
+/* =========================================
+   SPIELERAUSWAHL
+   ========================================= */
+.player-list {
+  list-style: none;
+  padding: 0;
+  margin: 20px auto;
+  max-width: 600px;
+}
+
+.player-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: var(--header-bg);
+  border: 1px solid #333;
+  border-radius: 10px;
+  padding: 8px 12px;
+  margin: 6px 0;
+}
+
+.player-list li span {
+  color: #fff;
+}
+
+.player-list input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  accent-color: var(--cell-pos-color);
+}
+
+.player-list .num {
+  width: 48px;
+  text-align: center;
+  font-weight: 700;
+  color: #fff;
+}
+
+.player-list input[type="text"] {
+  background: var(--row-even);
+  color: var(--text-color);
+  border: 1px solid #444;
+  border-radius: 8px;
+  padding: 6px 8px;
+  flex: 1;
+}
+
+/* Bestätigungsbutton */
+.confirm-btn {
+  display: block;
+  margin: 20px auto;
+  padding: 10px 30px;
+  background: var(--cell-pos-color);
+  border: none;
+  border-radius: 10px;
+  font-size: 1.1rem;
+  cursor: pointer;
+  color: #fff;
+  font-weight: 600;
+  transition: background 0.2s;
+}
+
+.confirm-btn:hover {
+  background: #00e07f;
+}
+
+/* =========================================
+   STICKY HEADER / BUTTONS
+   ========================================= */
+.sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 50;
+  background: var(--header-bg);
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  border-radius: 8px;   /* abgerundete Ecken */
+  margin-bottom: 10px;  /* Abstand zur Tabelle */
+  padding: 8px 12px;    /* innen Platz für die Buttons */
+  display: flex;
+  justify-content: center; /* Buttons zentriert */
+  align-items: center;
+}
+
+.top-bar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  padding: 8px 0;
+}
+
+.top-btn {
+  background: #2b2b2b;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-size: 0.95rem;
+  transition: background 0.2s;
+}
+
+.top-btn:hover {
+  background: #3b3b3b;
+}
+
+.danger-btn {
+  background: #8b0000;
+  color: #fff;
+}
+
+.danger-btn:hover {
+  background: #a30000;
+}
+
+/* =========================================
+   TIMER BUTTON
+   ========================================= */
+.timer {
+  font-size: 1.1rem;
+  padding: 10px 16px;
+  transition: background-color 0.25s;
+}
+
+.timer.running {
+  background: var(--cell-pos-color);
+}
+
+.timer.stopped {
+  background: #b00020;
+}
+
+.timer.reset {
+  background: #2b2b2b;
+}
+
+/* =========================================
+   STATISTIK-TABELLE
+   ========================================= */
+#statsScrollContainer {
+  max-height: calc(100vh - 160px);
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.95rem;
+}
+
+thead th {
+  background: #1f1f1f;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 8px 6px;
+  border-bottom: 2px solid #333;
+  text-align: center;
+}
+
+thead th:nth-child(2) {
+  text-align: left;
+  padding-left: 12px;
+}
+
+th, td {
+  padding: 8px 6px;
+  text-align: center;
+  border-bottom: 1px solid #333;
+  color: var(--text-color);
+}
+
+.even-row { background-color: var(--row-even); }
+.odd-row  { background-color: var(--row-odd); }
+
+td[data-player] {
+  cursor: pointer;
+  transition: transform 0.08s, background 0.08s;
+}
+
+td[data-player]:active {
+  transform: scale(1.12);
+  background: #222;
+}
+
+/* Dynamische Zellfarben */
+td[data-cat][data-value] { transition: color 0.2s ease; }
+
+td[data-cat][data-value^="+"] { color: var(--cell-pos-color) !important; }
+td[data-cat][data-value^="-"] { color: var(--cell-neg-color) !important; }
+td[data-cat][data-value="0"],
+td[data-cat][data-value="0.0"],
+td[data-cat][data-value=""] { color: var(--cell-zero-color) !important; }
+
+/* Sortier-Pfeil Styling */
+th.sortable { user-select: none; }
+th .sort-arrow { font-size: 0.7rem; color: #ddd }
+
+/* =========================================
+   TORBILD-SEITE
+   ========================================= */
+.torbild-layout {
+  display: flex;
+  justify-content: space-between;
+  align-items: stretch;
+  gap: 20px;
+  height: calc(100vh - 120px);
+  margin-top: 20px;
+}
+
+.field-column {
+  flex: 1;
+  display: flex;
+  justify-content: center;
+}
+
+.field-box,
+.img-box {
+  background: #1e1e1e;
+  border: 2px solid #333;
+  border-radius: 10px;
+  padding: 5px;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.field-box img,
+.img-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+/* Rechte Spalte (Tore & Zeittracking) */
+.goal-column {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.marker-dot {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 6px rgba(0, 0, 0, 0.6);
+  border: 2px solid rgba(255, 255, 255, 0.15);
+  cursor: pointer;
+}
+
+/* =========================================
+   ZEITERFASSUNG
+   ========================================= */
+.time-tracking-box {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  background: #1a1a1a;
+  border: 2px solid #333;
+  border-radius: 10px;
+  padding: 10px 14px;
+  color: #fff;
+  font-size: 0.95rem;
+  height: 100%;
+  gap: 10px;
+}
+
+.period {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  grid-template-rows: auto minmax(1.4em, auto) auto; /* obere Buttons – Text – untere Buttons */
+  align-items: center;
+  justify-items: center;
+  row-gap: 2px;          /* minimaler Abstand oberhalb/unterhalb der Schrift */
+  column-gap: 12px;      /* horizontaler Abstand zwischen Buttons */
+  padding: 6px 10px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.3);
+  border-radius: 8px;
+}
+.period-title {
+  grid-column: 1 / -1;
+  font-weight: bold;
+  text-align: center;
+  margin-bottom: 4px;
+  font-size: 0.85rem;
+}
+
+.period-buttons.top-row,
+.period-buttons.bottom-row,
+.period-numbers {
+  display: contents; /* sorgt für Spaltenausrichtung */
+}
+
+/* Die mittleren Beschriftungen */
+.period-numbers span {
+  color: #ccc;
+  font-size: 0.8rem;
+  line-height: 1;
+  justify-self: center;
+  align-self: center;
+}
+
+/* Buttons */
+.time-btn {
+  width: 100%;
+  height: 20px; /* dünnere Buttons */
+  border: none;
+  border-radius: 6px;
+  font-weight: 600;
+  font-size: 12px;
+  cursor: pointer;
+  transition: transform 0.1s, background 0.2s;
+}
+
+/* Farben */
+.period-buttons.top-row .time-btn { background: var(--btn-top-bg); }
+.period-buttons.bottom-row .time-btn { background: var(--btn-bottom-bg); }
+
+.period-buttons.top-row .time-btn:hover { background-color: #b2f0b2; }
+.period-buttons.bottom-row .time-btn:hover { background-color: #ffd3d3; }
+
+.time-btn:active { transform: scale(1.05); }
+
+/* =========================================
+   RESPONSIVE
+   ========================================= */
+@media (max-width: 900px) {
+  .torbild-layout { flex-direction: column; height: auto; }
+}
+/* =========================================
+   TORBILD HEADER – fixiert & zentriert
+   ========================================= */
+.torbild-header {
+  position: fixed; /* bleibt oben fixiert */
+  top: 0;
+  left: 50%;
+  width: 100%;             /* volle Breite innerhalb max-width */
+  max-width: 1100px;       /* gleiche Breite wie .page */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--header-bg);
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
+  z-index: 1000;
+}
+
+/* Abstand unter dem fixierten Header, damit nichts verdeckt wird */
+#torbildPage {
+  padding-top: calc(var(--sticky-header-height) + 10px);
+}
+
+/* =========================================
+   SEASON HEADER – fixiert & zentriert
+   ========================================= */
+.season-header {
+  position: relative; /* normale Position im Flow */
+  top: 0;
+  left: 50%;                /* zentriert auf der Seite */
+  transform: translateX(-50%);
+  width: 100%;
+  max-width: 1100px;        /* gleiche Breite wie .page */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--header-bg);
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+  z-index: 1000;
+}
+
+/* Top-Bar innerhalb des Headers */
+.season-header .top-bar {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Abstand unter dem fixierten Header, damit Inhalt nicht überlappt */
+#seasonPage {
+  padding-top: calc(var(--sticky-header-height) + 15px);
+}
+.torbild-header,
+.season-header {
+  position: relative;     /* normale Position im Flow */
+  top: auto;
+  left: auto;
+  transform: none;
+  width: 100%;
+  max-width: 1100px;
+  margin: 0 auto;         /* zentriert */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: var(--header-bg);
+  padding: 8px 12px;
+  border-radius: 8px;
+  box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+  z-index: 1;             /* reicht für Layout */
+}
+/* Abstand oben, damit Inhalt nicht verdeckt wird */
+#torbildPage,
+#seasonPage {
+  padding-top: calc(var(--sticky-header-height) + 10px);
+}
+/* =========================================
+   SEASON-TABELLE – dynamische Breite, ohne Name
+   ========================================= */
+#seasonPage table {
+  width: auto; /* keine feste Breite */
+  table-layout: auto; /* Spalten passen sich Inhalt an */
+  border-collapse: collapse;
+  font-size: 0.95rem;
+  margin: 0 auto; /* Tabelle zentriert */
+}
+
+#seasonPage th,
+#seasonPage td {
+  padding: 8px 6px;
+  text-align: center;
+  border-bottom: 1px solid #333;
+  color: var(--text-color);
+  white-space: nowrap; /* kein Zeilenumbruch */
+}
+
+#seasonPage thead th {
+  background: #1f1f1f;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  padding: 8px 6px;
+  border-bottom: 2px solid #333;
+  text-align: center;
+}
+
+#seasonPage tr:nth-child(even) { background-color: var(--row-even); }
+#seasonPage tr:nth-child(odd)  { background-color: var(--row-odd); }
+.top-btn.season-btn {
+  background-color: #1E90FF;
+  color: #fff;
+}
+
+.top-btn.season-btn:hover {
+  background-color: #187bdb; /* etwas dunkler beim Hover */
+}
+
+/* ==================================================
+   NEW: Styling for the Total/Average row in Season table
+   - Must match header row visually and be bold
+   - Use !important to reliably override inline styles set by JS (if any)
+   ================================================== */
+#seasonPage .total-row td {
+  background: #1f1f1f !important;    /* same as thead th background */
+  color: var(--text-color) !important;
+  font-weight: 700 !important;
+  border-top: 2px solid #333;
+}
+
+/* ensure dark-mode doesn't change the total-row unexpectedly:
+   keep same appearance as header in both themes */
+[data-theme="dark"] #seasonPage .total-row td {
+  background: #1f1f1f !important;
+  color: var(--text-color) !important;
+}
+
+/* small visual tweak so total row stands out */
+#seasonPage .total-row td:first-child {
+  border-left: none;
+}
