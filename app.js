@@ -1,18 +1,18 @@
 // app.js
-// Vollständig aktualisierte Version mit UI-Positionen / Klassen wie gewünscht:
-// - Export Season buttons haben Klasse .season-btn (blaues Aussehen in CSS)
-// - Goal Map: Export Season Map neben Zurück, Reset ganz rechts
-// - Season Map: Reset ist rechts
-// - Keine eval/new Function oder setTimeout/setInterval mit String-Args
-// - showPage stub exists early and full implementation overwrites it later
-// Persistenz via localStorage.
+// Vollständig aktualisierte Version mit UI-Positionen / Klassen und Marker‑Einschränkungen.
+// - Marker nur innerhalb des Spielfeldes gesetzt (kein Rahmen).
+// - Marker in Tor-Boxen nur innerhalb definierter Tor‑Rect gesetzt.
+// - Torhüterbereich (Kreis) wird ignoriert.
+// - Export Season buttons haben Klasse .season-btn (blau).
+// - Keine eval/new Function oder setTimeout/setInterval mit String-Args.
+// - showPage stub exists early and full implementation overwrites it later.
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
   const pages = {
     selection: document.getElementById("playerSelectionPage"),
     stats: document.getElementById("statsPage"),
-    torbild: document.getElementById("torbildPage"), // visible label "Goal Map"
+    torbild: document.getElementById("torbildPage"),
     season: document.getElementById("seasonPage"),
     seasonMap: document.getElementById("seasonMapPage")
   };
@@ -40,7 +40,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const playerListContainer = document.getElementById("playerList");
   const confirmSelectionBtn = document.getElementById("confirmSelection");
   const statsContainer = document.getElementById("statsContainer");
-  const torbildBtn = document.getElementById("torbildBtn"); // visible "Goal Map"
+  const torbildBtn = document.getElementById("torbildBtn");
   const backToStatsBtn = document.getElementById("backToStatsBtn");
   const timerBtn = document.getElementById("timerBtn");
   const selectPlayersBtn = document.getElementById("selectPlayersBtn");
@@ -199,7 +199,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // expose renderPlayerSelection to rest of file
+  // expose renderPlayerSelection
   window.__renderPlayerSelection = renderPlayerSelection;
 
   // --- Eiszeitfarben dynamisch setzen ---
@@ -492,10 +492,32 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Marker helpers ---
+  // --- Marker helpers with placement restrictions ---
   const LONG_MARK_MS = 600;
 
+  // Percent-based allowed areas and keeper area (tweak as needed)
+  const FIELD_MARGIN = { left: 3, right: 97, top: 3, bottom: 97 }; // percent area inside field image
+  const GOAL_RECT = { left: 10, right: 90, top: 10, bottom: 90 }; // percent area inside goal image where markers allowed
+  const GOAL_KEEPER = { x: 50, y: 50, r: 14 }; // keeper center (%) and radius (%) for excluding markers
+
+  function clampPct(v) {
+    if (v < 0) return 0;
+    if (v > 100) return 100;
+    return v;
+  }
+  function isInsideRect(pos, rect) {
+    return pos.xPct >= rect.left && pos.xPct <= rect.right && pos.yPct >= rect.top && pos.yPct <= rect.bottom;
+  }
+  function isInsideCircle(pos, center, radius) {
+    const dx = pos.xPct - center.x;
+    const dy = pos.yPct - center.y;
+    const dist = Math.sqrt(dx*dx + dy*dy);
+    return dist <= radius;
+  }
+
   function createMarkerPercent(xPct, yPct, color, container, interactive = true) {
+    xPct = clampPct(xPct);
+    yPct = clampPct(yPct);
     const dot = document.createElement("div");
     dot.className = "marker-dot";
     dot.style.backgroundColor = color;
@@ -505,6 +527,42 @@ document.addEventListener("DOMContentLoaded", () => {
       dot.addEventListener("click", (ev) => { ev.stopPropagation(); dot.remove(); });
     }
     container.appendChild(dot);
+  }
+
+  function createMarkerBasedOn(pos, boxEl, longPress, forceGrey=false) {
+    if (!boxEl) return;
+    // field-box: allow only inside FIELD_MARGIN
+    if (boxEl.classList.contains("field-box")) {
+      if (!isInsideRect(pos, FIELD_MARGIN)) {
+        // ignore placements in the frame outside the field area
+        return;
+      }
+      const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
+      createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
+      return;
+    }
+
+    // goal boxes: allow only inside GOAL_RECT and prevent keeper area
+    if (boxEl.id === "goalGreenBox" || boxEl.id === "goalRedBox" || boxEl.classList.contains("goal-img-box")) {
+      if (!isInsideRect(pos, GOAL_RECT)) {
+        return;
+      }
+      if (isInsideCircle(pos, { x: GOAL_KEEPER.x, y: GOAL_KEEPER.y }, GOAL_KEEPER.r)) {
+        // clicked on keeper area -> ignore
+        return;
+      }
+      if (longPress || forceGrey) {
+        createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
+        return;
+      }
+      const goalColor = boxEl.id === "goalGreenBox" ? "#00aa44" : (boxEl.id === "goalRedBox" ? "#ff3333" : "#444");
+      createMarkerPercent(pos.xPct, pos.yPct, goalColor, boxEl, true);
+      return;
+    }
+
+    // other boxes: restrict to field margin as fallback
+    if (!isInsideRect(pos, FIELD_MARGIN)) return;
+    createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
   }
 
   function clearAllMarkers() {
@@ -530,20 +588,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const xPct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * 100;
         const yPct = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)) * 100;
         return { xPct, yPct };
-      }
-
-      function createMarkerBasedOn(pos, boxEl, longPress, forceGrey=false) {
-        const id = boxEl.id;
-        if (id === "goalGreenBox" || id === "goalRedBox" || longPress || forceGrey) {
-          createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
-          return;
-        }
-        if (boxEl.classList.contains("field-box")) {
-          const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
-          createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
-          return;
-        }
-        createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
       }
 
       // mouse
@@ -713,7 +757,6 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function exportSeasonMapFromTorbild() {
-    // collect markers for torbild boxes (in DOM order)
     const boxes = Array.from(document.querySelectorAll(torbildBoxesSelector));
     const allMarkers = boxes.map(box => {
       const markers = [];
@@ -729,17 +772,14 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     localStorage.setItem("seasonMapMarkers", JSON.stringify(allMarkers));
 
-    // copy time tracking from torbild time box
     const timeData = readTimeTrackingFromBox(torbildTimeTrackingBox);
     localStorage.setItem("seasonMapTimeData", JSON.stringify(timeData));
 
-    // navigate and render
     showPageRef("seasonMap");
     renderSeasonMapPage();
   }
 
   function renderSeasonMapPage() {
-    // clear seasonMap markers
     const boxes = Array.from(document.querySelectorAll(seasonMapBoxesSelector));
     boxes.forEach(box => box.querySelectorAll(".marker-dot").forEach(d => d.remove()));
 
@@ -763,7 +803,6 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const tdata = JSON.parse(rawTime);
         writeTimeTrackingToBox(seasonMapTimeTrackingBox, tdata);
-        // ensure time buttons remain disabled/read-only
         seasonMapTimeTrackingBox.querySelectorAll(".time-btn").forEach(btn => {
           btn.disabled = true;
           btn.classList.add("disabled-readonly");
@@ -797,7 +836,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   if (backToStatsFromSeasonMapBtn) backToStatsFromSeasonMapBtn.addEventListener("click", () => showPageRef("stats"));
-  if (resetSeasonMapBtn) resetSeasonMapBtn.addEventListener("click", resetSeasonMap);
+  if (document.getElementById("resetSeasonMapBtn")) document.getElementById("resetSeasonMapBtn").addEventListener("click", resetSeasonMap);
 
   // --- Season export (Stats -> Season) ---
   const exportSeasonHandler = () => {
@@ -867,7 +906,7 @@ document.addEventListener("DOMContentLoaded", () => {
     exportSeasonFromStatsBtn.addEventListener("click", exportSeasonHandler);
   }
 
-  // --- Season table rendering (full, with sorting and total row) ---
+  // --- Season table rendering (full) ---
   function formatTimeMMSS(sec) {
     const mm = String(Math.floor(sec / 60)).padStart(2, "0");
     const ss = String(sec % 60).padStart(2, "0");
@@ -924,7 +963,6 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const tbody = document.createElement("tbody");
 
-    // Build rows array from seasonData
     const rows = Object.keys(seasonData).map(name => {
       const d = seasonData[name];
       const games = Number(d.games || 0);
@@ -944,37 +982,16 @@ document.addEventListener("DOMContentLoaded", () => {
       const goalsPerGame = games ? (goals / games) : 0;
       const pointsPerGame = games ? (points / games) : 0;
 
-      const mvpPoints = "";
-      const mvp = "";
-      const goalValue = "";
-
       const cells = [
-        mvpPoints,
-        mvp,
-        d.num || "",
-        d.name,
-        games,
-        goals,
-        assists,
-        points,
-        plusMinus,
-        Number(avgPlusMinus.toFixed(1)),
-        shots,
-        Number(shotsPerGame.toFixed(1)),
-        Number(goalsPerGame.toFixed(1)),
-        Number(pointsPerGame.toFixed(1)),
-        penalty,
-        goalValue,
-        faceOffs,
-        faceOffsWon,
-        `${faceOffPercent}%`,
-        formatTimeMMSS(timeSeconds)
+        "", "", d.num || "", d.name, games, goals, assists, points, plusMinus,
+        Number(avgPlusMinus.toFixed(1)), shots, Number(shotsPerGame.toFixed(1)),
+        Number(goalsPerGame.toFixed(1)), Number(pointsPerGame.toFixed(1)),
+        penalty, "", faceOffs, faceOffsWon, `${faceOffPercent}%`, formatTimeMMSS(timeSeconds)
       ];
 
       return { name: d.name, num: d.num || "", cells, raw: { games, goals, assists, points, plusMinus, shots, penalty, faceOffs, faceOffsWon, faceOffPercent, timeSeconds } };
     });
 
-    // initial sort
     let displayRows = rows.slice();
     if (seasonSort.index === null) {
       displayRows.sort((a,b) => (b.raw.points || 0) - (a.raw.points || 0));
@@ -990,7 +1007,6 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
-    // build tbody rows
     displayRows.forEach(r => {
       const tr = document.createElement("tr");
       r.cells.forEach(c => {
@@ -1001,28 +1017,18 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.appendChild(tr);
     });
 
-    // Total/Average row
     const count = rows.length || 0;
     const sampleTh = headerRow.querySelector("th");
     const headerBg = sampleTh ? getComputedStyle(sampleTh).backgroundColor : "#1f1f1f";
     const headerColor = sampleTh ? getComputedStyle(sampleTh).color : getComputedStyle(document.documentElement).getPropertyValue('--text-color') || "#fff";
 
     if (count > 0) {
-      const sums = {
-        games: 0, goals: 0, assists: 0, points: 0, plusMinus: 0,
-        shots: 0, penalty: 0, faceOffs: 0, faceOffsWon: 0, timeSeconds: 0
-      };
+      const sums = { games:0, goals:0, assists:0, points:0, plusMinus:0, shots:0, penalty:0, faceOffs:0, faceOffsWon:0, timeSeconds:0 };
       rows.forEach(r => {
         const rs = r.raw;
-        sums.games += rs.games;
-        sums.goals += rs.goals;
-        sums.assists += rs.assists;
-        sums.points += rs.points;
-        sums.plusMinus += rs.plusMinus;
-        sums.shots += rs.shots;
-        sums.penalty += rs.penalty;
-        sums.faceOffs += rs.faceOffs;
-        sums.faceOffsWon += rs.faceOffsWon;
+        sums.games += rs.games; sums.goals += rs.goals; sums.assists += rs.assists;
+        sums.points += rs.points; sums.plusMinus += rs.plusMinus; sums.shots += rs.shots;
+        sums.penalty += rs.penalty; sums.faceOffs += rs.faceOffs; sums.faceOffsWon += rs.faceOffsWon;
         sums.timeSeconds += rs.timeSeconds;
       });
 
