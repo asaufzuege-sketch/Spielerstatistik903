@@ -1,10 +1,7 @@
 // app.js
-// Vollständige Datei. WICHTIGSTE ÄNDERUNG:
-// - Klicks in der .field-box werden nur akzeptiert, wenn sie auf der tatsächlich angezeigten Bildfläche
-//   des <img src="Spielfeld Overlay.png"> liegen (bei object-fit:contain also nicht in den Letterbox-/Padding-Bereichen).
-// - Umsetzung: wir berechnen die tatsächlich gerenderte Bildregion im <img>-Element (mittels naturalWidth/naturalHeight + clientWidth/clientHeight)
-//   und verwerfen Klicks außerhalb dieser Region. Bei Sampling (Canvas) wird für die Farberkennung die Position relativ zum Bild verwendet.
-// - Verhalten für Tore (goalGreenBox/goalRedBox) bleibt unverändert.
+// Vollständige Datei mit Anpassung: Rot-Erkennung auf dem Spielfeld gelockert,
+// sodass rote Flächen wieder rote Punkte setzen können (wie gewünscht).
+// Restliche Logik unverändert (Tore: weiße/neutral‑weiße Prüfungen bleiben).
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
@@ -61,7 +58,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const seasonMapBoxesSelector = "#seasonMapPage .field-box, #seasonMapPage .goal-img-box";
 
   const torbildTimeTrackingBox = document.getElementById("timeTrackingBox");
-  const seasonMapTimeTrackingBox = document.getElementById("seasonTimeTrackingBox");
+  const seasonMapTimeTrackingBox = document.getElementById("seasonMapTimeTrackingBox");
 
   // --- Dark/Light Mode automatisch setzen ---
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
@@ -491,10 +488,10 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Marker helpers with FIELD_RECT fallback and color sampling for field image ---
+  // --- Marker helpers with FIELD image sampling (only inside rendered image) ---
   const LONG_MARK_MS_INTERNAL = 600;
 
-  // FIELD_RECT fallback if sampling not available (conservative area) - retained but not used to allow outside-image clicks
+  // FIELD_RECT fallback if sampling not available (conservative area) - kept but clicks outside rendered image are rejected now
   const FIELD_RECT = { left: 7, right: 93, top: 5, bottom: 95 }; // percent of image area
 
   function clampPct(v) {
@@ -575,7 +572,7 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       // green detection: green channel high and significantly above red+blue
-      sampler.isGreenAt = (xPct, yPct, gThreshold = 100, diff = 35) => {
+      sampler.isGreenAt = (xPct, yPct, gThreshold = 110, diff = 30) => {
         const p = getPixel(xPct, yPct);
         if (!p) return false;
         if (p.a === 0) return false;
@@ -583,7 +580,8 @@ document.addEventListener("DOMContentLoaded", () => {
       };
 
       // red detection: red channel high and significantly above green+blue
-      sampler.isRedAt = (xPct, yPct, rThreshold = 100, diff = 35) => {
+      // **ADJUSTED**: threshold and diff lowered to allow red-field pixels to be recognized reliably
+      sampler.isRedAt = (xPct, yPct, rThreshold = 95, diff = 22) => {
         const p = getPixel(xPct, yPct);
         if (!p) return false;
         if (p.a === 0) return false;
@@ -621,7 +619,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (boxEl.classList.contains("field-box")) {
       const img = boxEl.querySelector("img");
       if (img) {
-        // pos has: xPctContainer,yPctContainer and optionally xPctImage,yPctImage,insideImage
+        // require click inside rendered image area (no letterbox/padding)
         if (!pos.insideImage) {
           // Click outside the rendered image (in letterbox/padding) -> ignore
           return;
@@ -632,7 +630,7 @@ document.addEventListener("DOMContentLoaded", () => {
           const ix = pos.xPctImage;
           const iy = pos.yPctImage;
           const isGreen = sampler.isGreenAt(ix, iy, 110, 30);
-          const isRed = sampler.isRedAt(ix, iy, 110, 30);
+          const isRed = sampler.isRedAt(ix, iy, 95, 22); // relaxed thresholds for red
           if (isGreen) {
             createMarkerPercent(pos.xPctContainer, pos.yPctContainer, "#00ff66", boxEl, true);
             return;
@@ -645,7 +643,7 @@ document.addEventListener("DOMContentLoaded", () => {
           return;
         } else {
           // sampling not available (CORS) -> still enforce "only on image" by using pos.insideImage
-          // choose color by vertical position inside image as best-effort
+          // choose color by vertical position inside image as best-effort (older fallback)
           const color = pos.yPctImage > 50 ? "#ff0000" : "#00ff66";
           createMarkerPercent(pos.xPctContainer, pos.yPctContainer, color, boxEl, true);
           return;
@@ -662,7 +660,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!img) return;
       const sampler = createImageSampler(img);
       if (!sampler || !sampler.valid) {
-        // conservative: disallow if sampling unavailable
+        // conservative: disallow if we can't sample
         return;
       }
       if (boxEl.id === "goalGreenBox") {
@@ -717,7 +715,6 @@ document.addEventListener("DOMContentLoaded", () => {
         const yPctContainer = Math.max(0, Math.min(1, (clientY - boxRect.top) / boxRect.height)) * 100;
 
         // Determine the actual rendered image region inside the img element when object-fit:contain is used.
-        // Use naturalWidth/naturalHeight and the element's CSS content box to compute rendered size.
         const naturalW = img.naturalWidth || img.width || 1;
         const naturalH = img.naturalHeight || img.height || 1;
         const clientW = boxRect.width;
