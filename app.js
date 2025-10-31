@@ -1,7 +1,11 @@
 // app.js
-// Aktualisiert: "Torbild" sichtbar als "Goal Map"; Season Map read-only (keine Marker/Points setzen);
-// Timer-Button links + heller; marker-creation only active on Goal Map (torbildPage).
-// Komplette Datei zur direkten Übernahme.
+// Vollständig bereinigte Version:
+// - showPage wird früh verfügbar gemacht (kein ReferenceError mehr)
+// - Alle Form-Inputs in Spielerauswahl bekommen name/id Attribute (Autofill/Lighthouse)
+// - Keine eval/new Function oder setTimeout/setInterval mit String-Args verwendet
+// - Season Map read-only (Marker nur per Export aus Goal Map)
+// - Timer-Button ist links + heller
+// Persistenz via localStorage.
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
@@ -12,6 +16,28 @@ document.addEventListener("DOMContentLoaded", () => {
     season: document.getElementById("seasonPage"),
     seasonMap: document.getElementById("seasonMapPage")
   };
+
+  // --- Early showPage stub (ensures handlers attached earlier can call it) ---
+  // Will be overwritten by the full implementation later in the file.
+  function showPage(page) {
+    try {
+      Object.values(pages).forEach(p => { if (p) p.style.display = "none"; });
+      if (pages[page]) pages[page].style.display = "block";
+      localStorage.setItem("currentPage", page);
+      let title = "Spielerstatistik";
+      if (page === "selection") title = "Spielerauswahl";
+      else if (page === "stats") title = "Statistiken";
+      else if (page === "torbild") title = "Goal Map";
+      else if (page === "season") title = "Season";
+      else if (page === "seasonMap") title = "Season Map";
+      document.title = title;
+      if (typeof updateStickyHeaderHeight === "function") setTimeout(updateStickyHeaderHeight, 50);
+    } catch (err) {
+      console.warn("showPage (early stub) failed:", err);
+    }
+  }
+  window.showPage = showPage;
+
   const playerListContainer = document.getElementById("playerList");
   const confirmSelectionBtn = document.getElementById("confirmSelection");
   const statsContainer = document.getElementById("statsContainer");
@@ -100,12 +126,15 @@ document.addEventListener("DOMContentLoaded", () => {
         const nb = Number(b.num) || 999;
         return na - nb;
       })
-      .forEach(p => {
+      .forEach((p, idx) => {
         const li = document.createElement("li");
+        // create unique ids/names for inputs to satisfy autofill / lighthouse
+        const checkboxId = `player-chk-${idx}`;
+        const checkboxName = `player-${idx}`;
         const checked = selectedPlayers.find(sp => sp.name === p.name) ? "checked" : "";
         li.innerHTML = `
-          <label class="player-line" style="display:flex;align-items:center;gap:8px;width:100%;">
-            <input type="checkbox" value="${p.num}|${p.name}" ${checked} style="flex:0 0 auto">
+          <label class="player-line" style="display:flex;align-items:center;gap:8px;width:100%;" for="${checkboxId}">
+            <input id="${checkboxId}" name="${checkboxName}" type="checkbox" value="${p.num}|${p.name}" ${checked} style="flex:0 0 auto">
             <div class="num" style="flex:0 0 48px;text-align:center;"><strong>${p.num || "-"}</strong></div>
             <div class="name" style="flex:1;color:#eee;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;"><strong>${p.name}</strong></div>
           </label>`;
@@ -117,54 +146,64 @@ document.addEventListener("DOMContentLoaded", () => {
     for (let i = 0; i < 2; i++) {
       const pre = customSelected[i];
       const li = document.createElement("li");
+      const chkId = `custom-chk-${i}`;
+      const numId = `custom-num-${i}`;
+      const nameId = `custom-name-${i}`;
       li.innerHTML = `
-        <label class="custom-line" style="display:flex;align-items:center;gap:8px;width:100%;">
-          <input type="checkbox" class="custom-checkbox" ${pre ? "checked" : ""} style="flex:0 0 auto">
-          <input type="text" class="custom-num" inputmode="numeric" maxlength="3" placeholder="Nr." value="${pre?.num || ""}" style="width:56px;flex:0 0 auto;text-align:center;">
-          <input type="text" class="custom-name" placeholder="Eigener Spielername" value="${pre?.name || ""}" style="flex:1;min-width:0;">
+        <label class="custom-line" style="display:flex;align-items:center;gap:8px;width:100%;" for="${chkId}">
+          <input id="${chkId}" name="${chkId}" type="checkbox" class="custom-checkbox" ${pre ? "checked" : ""} style="flex:0 0 auto">
+          <input id="${numId}" name="${numId}" type="text" class="custom-num" inputmode="numeric" maxlength="3" placeholder="Nr." value="${pre?.num || ""}" style="width:56px;flex:0 0 auto;text-align:center;">
+          <input id="${nameId}" name="${nameId}" type="text" class="custom-name" placeholder="Eigener Spielername" value="${pre?.name || ""}" style="flex:1;min-width:0;">
         </label>`;
       playerListContainer.appendChild(li);
     }
   }
 
   // --- Confirm selection handler ---
-  confirmSelectionBtn.addEventListener("click", () => {
-    selectedPlayers = Array.from(playerListContainer.querySelectorAll("input[type='checkbox']:not(.custom-checkbox)"))
-      .filter(chk => chk.checked)
-      .map(chk => {
-        const [num, name] = chk.value.split("|");
-        return { num, name };
-      });
+  if (confirmSelectionBtn) {
+    confirmSelectionBtn.addEventListener("click", () => {
+      try {
+        selectedPlayers = Array.from(playerListContainer.querySelectorAll("input[type='checkbox']:not(.custom-checkbox)"))
+          .filter(chk => chk.checked)
+          .map(chk => {
+            const [num, name] = chk.value.split("|");
+            return { num, name };
+          });
 
-    // handle custom
-    const allLis = Array.from(playerListContainer.querySelectorAll("li"));
-    const customLis = allLis.slice(players.length);
-    customLis.forEach(li => {
-      const chk = li.querySelector(".custom-checkbox");
-      const numInput = li.querySelector(".custom-num");
-      const nameInput = li.querySelector(".custom-name");
-      if (chk && chk.checked && nameInput && nameInput.value.trim() !== "") {
-        selectedPlayers.push({ num: numInput.value.trim(), name: nameInput.value.trim() });
+        // handle custom
+        const allLis = Array.from(playerListContainer.querySelectorAll("li"));
+        const customLis = allLis.slice(players.length);
+        customLis.forEach((li, ci) => {
+          const chk = li.querySelector(".custom-checkbox");
+          const numInput = li.querySelector(".custom-num");
+          const nameInput = li.querySelector(".custom-name");
+          if (chk && chk.checked && nameInput && nameInput.value.trim() !== "") {
+            selectedPlayers.push({ num: numInput.value.trim(), name: nameInput.value.trim() });
+          }
+        });
+
+        localStorage.setItem("selectedPlayers", JSON.stringify(selectedPlayers));
+
+        // ensure statsData exists for selected players
+        selectedPlayers.forEach(p => {
+          if (!statsData[p.name]) statsData[p.name] = {};
+          categories.forEach(c => { if (statsData[p.name][c] === undefined) statsData[p.name][c] = 0; });
+        });
+        localStorage.setItem("statsData", JSON.stringify(statsData));
+
+        showPage("stats");
+        renderStatsTable();
+      } catch (err) {
+        console.error("Error in confirmSelection handler:", err);
+        alert("Fehler beim Bestätigen (siehe Konsole): " + (err && err.message ? err.message : err));
       }
     });
+  }
 
-    localStorage.setItem("selectedPlayers", JSON.stringify(selectedPlayers));
-
-    // ensure statsData exists for selected players
-    selectedPlayers.forEach(p => {
-      if (!statsData[p.name]) statsData[p.name] = {};
-      categories.forEach(c => { if (statsData[p.name][c] === undefined) statsData[p.name][c] = 0; });
-    });
-    localStorage.setItem("statsData", JSON.stringify(statsData));
-
-    showPage("stats");
-    renderStatsTable();
-  });
-
-  // expose renderPlayerSelection
+  // expose renderPlayerSelection to rest of file
   window.__renderPlayerSelection = renderPlayerSelection;
 
-  // --- Ice time colors ---
+  // --- Eiszeitfarben dynamisch setzen ---
   function updateIceTimeColors() {
     const iceTimes = selectedPlayers.map(p => ({ name: p.name, seconds: playerTimes[p.name] || 0 }));
     const sortedDesc = iceTimes.slice().sort((a,b) => b.seconds - a.seconds);
@@ -181,7 +220,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Render stats table (unchanged) ---
+  // --- Render stats table ---
   function renderStatsTable() {
     if (!statsContainer) return;
     statsContainer.innerHTML = "";
@@ -283,9 +322,10 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
-    // per-player timers on name click
+    // start/stop per-player timers when clicking name
     statsContainer.querySelectorAll("td:nth-child(2)").forEach(td => {
       const playerName = td.textContent.trim();
+      // set background if timer active
       if (activeTimers[playerName]) td.style.backgroundColor = "#005c2f";
       else td.style.backgroundColor = "";
 
@@ -310,11 +350,12 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     });
 
+    // after rendering update colors/totals
     updateIceTimeColors();
     updateTotals();
   }
 
-  // --- changeValue ---
+  // --- change value helper ---
   function changeValue(td, delta) {
     const player = td.dataset.player;
     const cat = td.dataset.cat;
@@ -324,6 +365,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.setItem("statsData", JSON.stringify(statsData));
     td.textContent = statsData[player][cat];
 
+    // recolor cell
     const val = statsData[player][cat];
     const posColor = getComputedStyle(document.documentElement).getPropertyValue('--cell-pos-color')?.trim() || "#00ff80";
     const negColor = getComputedStyle(document.documentElement).getPropertyValue('--cell-neg-color')?.trim() || "#ff4c4c";
@@ -333,7 +375,7 @@ document.addEventListener("DOMContentLoaded", () => {
     updateTotals();
   }
 
-  // --- updateTotals ---
+  // --- update totals ---
   function updateTotals() {
     const totals = {};
     categories.forEach(c => totals[c] = 0);
@@ -371,6 +413,7 @@ document.addEventListener("DOMContentLoaded", () => {
           updateTotals();
         };
       } else if (cat === "Time") {
+        // show total time sum as mm:ss
         const mm = String(Math.floor(totalSeconds / 60)).padStart(2,"0");
         const ss = String(totalSeconds % 60).padStart(2,"0");
         tc.textContent = `${mm}:${ss}`;
@@ -384,7 +427,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- timer functions ---
+  // --- timer helper functions ---
   function updateTimerDisplay(){
     const m = String(Math.floor(timerSeconds / 60)).padStart(2,"0");
     const s = String(timerSeconds % 60).padStart(2,"0");
@@ -410,6 +453,7 @@ document.addEventListener("DOMContentLoaded", () => {
     if (timerBtn) { timerBtn.classList.remove("running","stopped"); timerBtn.classList.add("reset"); }
   }
 
+  // timer long-press detection (CSP-safe)
   let holdTimer = null, longPress = false;
   const LONG_MS = 800;
   if (timerBtn) {
@@ -422,32 +466,36 @@ document.addEventListener("DOMContentLoaded", () => {
     timerBtn.addEventListener("click", () => { if (longPress) { longPress=false; return; } if (timerInterval) stopTimer(); else startTimer(); });
   }
 
-  // --- CSV export (unchanged) ---
-  exportBtn.addEventListener("click", () => {
-    const rows = [["Spieler", ...categories, "Time"]];
-    selectedPlayers.forEach(p => {
-      const seconds = playerTimes[p.name] || 0;
-      const m = String(Math.floor(seconds/60)).padStart(2,"0");
-      const s = String(seconds%60).padStart(2,"0");
-      const iceTimeStr = `${m}:${s}`;
-      const row = [p.name, ...categories.map(c => statsData[p.name]?.[c] ?? 0), iceTimeStr];
-      rows.push(row);
+  // --- CSV Export (Stats) ---
+  if (exportBtn) {
+    exportBtn.addEventListener("click", () => {
+      const rows = [["Spieler", ...categories, "Time"]];
+      selectedPlayers.forEach(p => {
+        const seconds = playerTimes[p.name] || 0;
+        const m = String(Math.floor(seconds/60)).padStart(2,"0");
+        const s = String(seconds%60).padStart(2,"0");
+        const iceTimeStr = `${m}:${s}`;
+        const row = [p.name, ...categories.map(c => statsData[p.name]?.[c] ?? 0), iceTimeStr];
+        rows.push(row);
+      });
+      const totalsCells = document.querySelectorAll("#totalsRow .total-cell");
+      const totalsRow = ["TOTAL"];
+      totalsCells.forEach(cell => totalsRow.push(cell.innerText.replace(/\n/g, " ").trim()));
+      rows.push(totalsRow);
+      rows.push(["Timer", timerBtn ? timerBtn.textContent : "00:00"]);
+      const csv = rows.map(r => r.join(";")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "spielerstatistik.csv";
+      a.click();
+      URL.revokeObjectURL(a.href);
     });
-    const totalsCells = document.querySelectorAll("#totalsRow .total-cell");
-    const totalsRow = ["TOTAL"];
-    totalsCells.forEach(cell => totalsRow.push(cell.innerText.replace(/\n/g, " ").trim()));
-    rows.push(totalsRow);
-    rows.push(["Timer", timerBtn ? timerBtn.textContent : "00:00"]);
-    const csv = rows.map(r => r.join(";")).join("\n");
-    const blob = new Blob([csv], { type: "text/csv" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = "spielerstatistik.csv";
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
+  }
 
   // --- Marker helpers ---
+  const LONG_MARK_MS = 600;
+
   function createMarkerPercent(xPct, yPct, color, container, interactive = true) {
     const dot = document.createElement("div");
     dot.className = "marker-dot";
@@ -460,7 +508,11 @@ document.addEventListener("DOMContentLoaded", () => {
     container.appendChild(dot);
   }
 
-  // attach handlers only to Goal Map (torbild) boxes — Season Map is read-only
+  function clearAllMarkers() {
+    document.querySelectorAll(".marker-dot").forEach(d => d.remove());
+  }
+
+  // --- Marker handler for each image box (used for Goal Map only) ---
   function attachMarkerHandlersToBoxes(rootSelector) {
     document.querySelectorAll(rootSelector).forEach(box => {
       const img = box.querySelector("img");
@@ -502,7 +554,7 @@ document.addEventListener("DOMContentLoaded", () => {
           isLong = true;
           const pos = getPosFromEvent(ev);
           createMarkerBasedOn(pos, box, true);
-        }, 600);
+        }, LONG_MARK_MS);
       });
 
       img.addEventListener("mouseup", (ev) => {
@@ -533,7 +585,7 @@ document.addEventListener("DOMContentLoaded", () => {
           isLong = true;
           const pos = getPosFromEvent(ev.touches[0]);
           createMarkerBasedOn(pos, box, true);
-        }, 600);
+        }, LONG_MARK_MS);
       }, { passive: true });
 
       img.addEventListener("touchend", (ev) => {
@@ -562,7 +614,7 @@ document.addEventListener("DOMContentLoaded", () => {
   attachMarkerHandlersToBoxes(torbildBoxesSelector);
   // Do NOT attach handlers to seasonMapBoxesSelector -> read-only map
 
-  // --- Time tracking box initialization ---
+  // --- Time tracking helpers for boxes (shared) ---
   function initTimeTrackingBox(box, storageKey = "timeData", readOnly = false) {
     if (!box) return;
     let timeDataAll = JSON.parse(localStorage.getItem(storageKey)) || {};
@@ -631,11 +683,11 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // init torbild (interactive) and seasonMap (read-only)
+  // initialize both boxes
   initTimeTrackingBox(torbildTimeTrackingBox, "timeData", false);
   initTimeTrackingBox(seasonMapTimeTrackingBox, "seasonMapTimeData", true);
 
-  // --- Season Map export/import ---
+  // --- Season Map export/import functions ---
   function readTimeTrackingFromBox(box) {
     const result = {};
     if (!box) return result;
@@ -648,6 +700,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     return result;
   }
+
   function writeTimeTrackingToBox(box, data) {
     if (!box || !data) return;
     const periods = Array.from(box.querySelectorAll(".period"));
@@ -661,6 +714,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function exportSeasonMapFromTorbild() {
+    // collect markers for torbild boxes (in DOM order)
     const boxes = Array.from(document.querySelectorAll(torbildBoxesSelector));
     const allMarkers = boxes.map(box => {
       const markers = [];
@@ -676,15 +730,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     localStorage.setItem("seasonMapMarkers", JSON.stringify(allMarkers));
 
+    // copy time tracking from torbild time box
     const timeData = readTimeTrackingFromBox(torbildTimeTrackingBox);
     localStorage.setItem("seasonMapTimeData", JSON.stringify(timeData));
 
+    // navigate and render
     showPage("seasonMap");
     renderSeasonMapPage();
   }
 
   function renderSeasonMapPage() {
-    // clear existing markers in seasonMap image boxes
+    // clear seasonMap markers
     const boxes = Array.from(document.querySelectorAll(seasonMapBoxesSelector));
     boxes.forEach(box => box.querySelectorAll(".marker-dot").forEach(d => d.remove()));
 
@@ -696,15 +752,13 @@ document.addEventListener("DOMContentLoaded", () => {
           const box = boxes[idx];
           if (!box || !Array.isArray(markersForBox)) return;
           markersForBox.forEach(m => {
-            // create read-only markers (interactive=false)
-            createMarkerPercent(m.xPct, m.yPct, m.color || "#444", box, false);
+            createMarkerPercent(m.xPct, m.yPct, m.color || "#444", box, false); // read-only markers
           });
         });
       } catch (e) {
         console.warn("Invalid seasonMapMarkers", e);
       }
     }
-
     const rawTime = localStorage.getItem("seasonMapTimeData");
     if (rawTime) {
       try {
@@ -736,6 +790,7 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("Season Map exportiert und geöffnet.");
     });
   }
+
   if (seasonMapBtn) {
     seasonMapBtn.addEventListener("click", () => {
       showPage("seasonMap");
@@ -743,9 +798,9 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   if (backToStatsFromSeasonMapBtn) backToStatsFromSeasonMapBtn.addEventListener("click", () => showPage("stats"));
-  if (document.getElementById("resetSeasonMapBtn")) document.getElementById("resetSeasonMapBtn").addEventListener("click", resetSeasonMap);
+  if (resetSeasonMapBtn) resetSeasonMapBtn.addEventListener("click", resetSeasonMap);
 
-  // --- Season export (unchanged) ---
+  // --- Season export (Stats -> Season) ---
   const exportSeasonHandler = () => {
     if (!selectedPlayers || selectedPlayers.length === 0) {
       alert("Keine Spieler ausgewählt, nichts zu exportieren.");
@@ -813,8 +868,8 @@ document.addEventListener("DOMContentLoaded", () => {
     exportSeasonFromStatsBtn.addEventListener("click", exportSeasonHandler);
   }
 
-  // --- Season table renderer (full) ---
-  // (same implementation as previous version, kept here for completeness)
+  // --- Season table rendering (full, with sorting and total row) ---
+  // utility
   function formatTimeMMSS(sec) {
     const mm = String(Math.floor(sec / 60)).padStart(2, "0");
     const ss = String(sec % 60).padStart(2, "0");
@@ -871,6 +926,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const tbody = document.createElement("tbody");
 
+    // Build rows array from seasonData
     const rows = Object.keys(seasonData).map(name => {
       const d = seasonData[name];
       const games = Number(d.games || 0);
@@ -885,14 +941,15 @@ document.addEventListener("DOMContentLoaded", () => {
       const faceOffPercent = faceOffs ? Math.round((faceOffsWon / faceOffs) * 100) : 0;
       const timeSeconds = Number(d.timeSeconds || 0);
 
+      // per-game metrics with one decimal as requested earlier
       const avgPlusMinus = games ? (plusMinus / games) : 0;
       const shotsPerGame = games ? (shots / games) : 0;
       const goalsPerGame = games ? (goals / games) : 0;
       const pointsPerGame = games ? (points / games) : 0;
 
-      const mvpPoints = "";
+      const mvpPoints = ""; // left empty
       const mvp = "";
-      const goalValue = "";
+      const goalValue = ""; // left empty
 
       const cells = [
         mvpPoints,
@@ -920,6 +977,7 @@ document.addEventListener("DOMContentLoaded", () => {
       return { name: d.name, num: d.num || "", cells, raw: { games, goals, assists, points, plusMinus, shots, penalty, faceOffs, faceOffsWon, faceOffPercent, timeSeconds } };
     });
 
+    // initial sort
     let displayRows = rows.slice();
     if (seasonSort.index === null) {
       displayRows.sort((a,b) => (b.raw.points || 0) - (a.raw.points || 0));
@@ -935,6 +993,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
+    // build tbody rows
     displayRows.forEach(r => {
       const tr = document.createElement("tr");
       r.cells.forEach(c => {
@@ -945,7 +1004,7 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.appendChild(tr);
     });
 
-    // Total row (same logic as before)
+    // --- Total/Average row (Total Ø) ---
     const count = rows.length || 0;
     const sampleTh = headerRow.querySelector("th");
     const headerBg = sampleTh ? getComputedStyle(sampleTh).backgroundColor : "#1f1f1f";
@@ -1042,6 +1101,7 @@ document.addEventListener("DOMContentLoaded", () => {
     table.appendChild(tbody);
     container.appendChild(table);
 
+    // Sorting behavior
     function updateSortUI() {
       const ths = table.querySelectorAll("th.sortable");
       ths.forEach(th => {
@@ -1063,6 +1123,7 @@ document.addEventListener("DOMContentLoaded", () => {
         const idx = Number(th.dataset.colIndex);
         if (seasonSort.index === idx) seasonSort.asc = !seasonSort.asc;
         else { seasonSort.index = idx; seasonSort.asc = true; }
+        // update and re-render
         seasonSort.index = idx;
         renderSeasonTable();
       });
@@ -1080,6 +1141,7 @@ document.addEventListener("DOMContentLoaded", () => {
     renderStatsTable();
     alert("Spieldaten zurückgesetzt.");
   }
+
   function resetTorbildPage() {
     const sicher = confirm("⚠️ Goal Map (Marker & Timeboxen) zurücksetzen?");
     if (!sicher) return;
@@ -1088,6 +1150,7 @@ document.addEventListener("DOMContentLoaded", () => {
     localStorage.removeItem("timeData");
     alert("Goal Map zurückgesetzt.");
   }
+
   function resetSeasonPage() {
     const sicher = confirm("⚠️ Season-Daten löschen?");
     if (!sicher) return;
@@ -1097,19 +1160,41 @@ document.addEventListener("DOMContentLoaded", () => {
     alert("Season-Daten gelöscht.");
   }
 
+  // bind reset buttons
   document.getElementById("resetBtn")?.addEventListener("click", resetStatsPage);
   document.getElementById("resetTorbildBtn")?.addEventListener("click", resetTorbildPage);
   document.getElementById("resetSeasonBtn")?.addEventListener("click", resetSeasonPage);
 
-  // bind reset season map (if present)
+  // bind reset season map
   document.getElementById("resetSeasonMapBtn")?.addEventListener("click", resetSeasonMap);
 
-  // --- Navigation bindings ---
-  selectPlayersBtn.addEventListener("click", () => showPage("selection"));
-  torbildBtn.addEventListener("click", () => showPage("torbild")); // visible label "Goal Map"
-  backToStatsBtn.addEventListener("click", () => showPage("stats"));
-  backToStatsFromSeasonBtn?.addEventListener("click", () => showPage("stats"));
-  seasonBtn?.addEventListener("click", () => { showPage("season"); renderSeasonTable(); });
+  // --- Pages navigation helpers (full implementation, overwrites early stub) ---
+  function showPageFull(page) {
+    Object.values(pages).forEach(p => { if (p) p.style.display = "none"; });
+    if (pages[page]) pages[page].style.display = "block";
+    localStorage.setItem("currentPage", page);
+
+    // Titel anpassen
+    let title = "Spielerstatistik";
+    if (page === "selection") title = "Spielerauswahl";
+    else if (page === "stats") title = "Statistiken";
+    else if (page === "torbild") title = "Goal Map";
+    else if (page === "season") title = "Season";
+    else if (page === "seasonMap") title = "Season Map";
+    document.title = title;
+
+    setTimeout(updateStickyHeaderHeight, 50);
+  }
+  // overwrite earlier stub
+  window.showPage = showPageFull;
+  // keep local reference
+  const showPageRef = window.showPage;
+
+  selectPlayersBtn?.addEventListener("click", () => showPageRef("selection"));
+  torbildBtn?.addEventListener("click", () => { showPageRef("torbild"); });
+  backToStatsBtn?.addEventListener("click", () => showPageRef("stats"));
+  backToStatsFromSeasonBtn?.addEventListener("click", () => showPageRef("stats"));
+  seasonBtn?.addEventListener("click", () => { showPageRef("season"); renderSeasonTable(); });
 
   // Season CSV export in header
   document.getElementById("exportSeasonBtn")?.addEventListener("click", () => {
@@ -1149,17 +1234,17 @@ document.addEventListener("DOMContentLoaded", () => {
 
   const lastPage = localStorage.getItem("currentPage") || (selectedPlayers.length ? "stats" : "selection");
   if (lastPage === "stats") {
-    showPage("stats");
+    showPageRef("stats");
     renderStatsTable();
     updateIceTimeColors();
   } else if (lastPage === "season") {
-    showPage("season");
+    showPageRef("season");
     renderSeasonTable();
   } else if (lastPage === "seasonMap") {
-    showPage("seasonMap");
+    showPageRef("seasonMap");
     renderSeasonMapPage();
   } else {
-    showPage("selection");
+    showPageRef("selection");
   }
 
   // initial timer display
