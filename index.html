@@ -20,9 +20,10 @@
   <div id="statsPage" class="page" style="display:none;">
     <div class="sticky-header" id="stickyHeader">
       <div class="top-bar">
+        <!-- Timer ist jetzt die erste Schaltfläche -->
+        <button id="timerBtn" class="top-btn timer timer-left reset">00:00</button>
         <button id="selectPlayersBtn" class="top-btn">Spieler wählen</button>
-        <button id="timerBtn" class="top-btn timer reset">00:00</button>
-        <button id="torbildBtn" class="top-btn">Torbild</button>
+        <button id="torbildBtn" class="top-btn">Goal Map</button>
         <button id="seasonMapBtn" class="top-btn">Season Map</button>
         <button id="seasonBtn" class="top-btn">Season</button>
         <button id="exportBtn" class="top-btn">Export CSV</button>
@@ -35,7 +36,7 @@
     </div>
   </div>
 
-  <!-- TORBILD SEITE -->
+  <!-- GOAL MAP SEITE (früher Torbild) -->
   <div id="torbildPage" class="page" style="display:none;">
     <div class="torbild-header">
       <div style="display:flex;gap:8px;align-items:center;">
@@ -83,13 +84,13 @@
               <button class="time-btn">16</button>
             </div>
 
-            <!-- Zentrierte Titel über untere Buttons -->
             <div class="period-numbers">
               <span class=" num-center">19 - 15</span>
               <span class="num-center">14 - 10</span>
               <span class="num-center">9 - 5</span>
               <span class="num-center">4 - 0</span>
             </div>
+
             <!-- Untere Buttons -->
             <div class="period-buttons bottom-row">
               <button class="time-btn">15</button>
@@ -149,7 +150,7 @@
     </div>
   </div>
 
-  <!-- SEASON MAP PAGE (same layout as Torbild) -->
+  <!-- SEASON MAP PAGE (read-only map & timeboxes; values imported only) -->
   <div id="seasonMapPage" class="page" style="display:none;">
     <div class="torbild-header">
       <div style="display:flex;gap:8px;align-items:center;">
@@ -179,26 +180,22 @@
           <img src="Tor Rot.png" alt="Tor (Rot)" />
         </div>
 
-        <!-- Zeittracking Box (separate instance for Season Map) -->
+        <!-- Zeittracking Box (read-only) -->
         <div class="time-tracking-box" id="seasonTimeTrackingBox">
-          <!-- 1. Periode -->
           <div class="period" data-period="sp1">
             <div class="period-title">1st Period</div>
-
             <div class="period-buttons top-row">
               <button class="time-btn">19</button>
               <button class="time-btn">18</button>
               <button class="time-btn">17</button>
               <button class="time-btn">16</button>
             </div>
-
             <div class="period-numbers">
               <span class=" num-center">19 - 15</span>
               <span class="num-center">14 - 10</span>
               <span class="num-center">9 - 5</span>
               <span class="num-center">4 - 0</span>
             </div>
-
             <div class="period-buttons bottom-row">
               <button class="time-btn">15</button>
               <button class="time-btn">14</button>
@@ -207,7 +204,6 @@
             </div>
           </div>
 
-          <!-- 2. Periode -->
           <div class="period" data-period="sp2">
             <div class="period-title">2nd Period</div>
             <div class="period-buttons top-row">
@@ -230,7 +226,6 @@
             </div>
           </div>
 
-          <!-- 3. Periode -->
           <div class="period" data-period="sp3">
             <div class="period-title">3rd Period</div>
             <div class="period-buttons top-row">
@@ -259,11 +254,10 @@
 
   <!-- SEASON SEITE -->
   <div id="seasonPage" class="page" style="display:none;">
-    <!-- Sticky Header / Top-Bar -->
     <div class="sticky-header season-header">
       <div class="top-bar" style="width:100%; display:flex; align-items:center; gap:8px;">
         <button id="backToStatsFromSeasonBtn" class="top-btn">← Zurück</button>
-        <div style="flex:1"></div> <!-- Spacer, damit Export + Reset rechts -->
+        <div style="flex:1"></div>
         <button id="exportSeasonBtn" class="top-btn">Export CSV</button>
         <button id="resetSeasonBtn" class="top-btn danger-btn">Reset</button>
       </div>
