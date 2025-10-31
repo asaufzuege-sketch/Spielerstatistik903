@@ -15,6 +15,7 @@
   --btn-top-bg: #c8fbc8;
   --btn-bottom-bg: #ffe7e7;
   --timer-active-color: #005c2f;
+  --timer-left-bg: #3b3b3b; /* etwas heller als normale top-btn (#2b2b2b) */
 
   /* Layout */
   --sticky-header-height: 56px;
@@ -34,6 +35,7 @@
   --cell-pos-color: #00ff80;
   --cell-neg-color: #ff4c4c;
   --cell-zero-color: #ffffff;
+  --timer-left-bg: #3b3b3b;
 }
 body {
   margin: 0;
@@ -141,11 +143,11 @@ h1 {
   z-index: 50;
   background: var(--header-bg);
   box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-  border-radius: 8px;   /* abgerundete Ecken */
-  margin-bottom: 10px;  /* Abstand zur Tabelle */
-  padding: 8px 12px;    /* innen Platz für die Buttons */
+  border-radius: 8px;
+  margin-bottom: 10px;
+  padding: 8px 12px;
   display: flex;
-  justify-content: center; /* Buttons zentriert */
+  justify-content: center;
   align-items: center;
 }
 
@@ -172,11 +174,18 @@ h1 {
   background: #3b3b3b;
 }
 
+/* special lighter timer on the left */
+.top-btn.timer-left {
+  background: var(--timer-left-bg);
+}
+.top-btn.timer-left:hover {
+  background: #4e4e4e;
+}
+
 .danger-btn {
   background: #8b0000;
   color: #fff;
 }
-
 .danger-btn:hover {
   background: #a30000;
 }
@@ -189,17 +198,14 @@ h1 {
   padding: 10px 16px;
   transition: background-color 0.25s;
 }
-
 .timer.running {
   background: var(--cell-pos-color);
 }
-
 .timer.stopped {
   background: #b00020;
 }
-
 .timer.reset {
-  background: #2b2b2b;
+  background: var(--timer-left-bg);
 }
 
 /* =========================================
@@ -245,27 +251,26 @@ td[data-player] {
   cursor: pointer;
   transition: transform 0.08s, background 0.08s;
 }
-
 td[data-player]:active {
   transform: scale(1.12);
   background: #222;
 }
 
-/* Dynamische Zellfarben */
-td[data-cat][data-value] { transition: color 0.2s ease; }
-
-td[data-cat][data-value^="+"] { color: var(--cell-pos-color) !important; }
-td[data-cat][data-value^="-"] { color: var(--cell-neg-color) !important; }
-td[data-cat][data-value="0"],
-td[data-cat][data-value="0.0"],
-td[data-cat][data-value=""] { color: var(--cell-zero-color) !important; }
+/* Time button disabled/read-only appearance */
+.time-btn[disabled],
+.time-btn.disabled-readonly {
+  opacity: 0.7;
+  cursor: default;
+  pointer-events: none;
+  filter: brightness(0.95);
+}
 
 /* Sortier-Pfeil Styling */
 th.sortable { user-select: none; }
 th .sort-arrow { font-size: 0.7rem; color: #ddd }
 
 /* =========================================
-   TORBILD-SEITE
+   TORBILD / GOAL MAP SEITE
    ========================================= */
 .torbild-layout {
   display: flex;
@@ -303,7 +308,6 @@ th .sort-arrow { font-size: 0.7rem; color: #ddd }
   border-radius: 8px;
 }
 
-/* Rechte Spalte (Tore & Zeittracking) */
 .goal-column {
   flex: 1;
   display: flex;
@@ -342,11 +346,11 @@ th .sort-arrow { font-size: 0.7rem; color: #ddd }
 .period {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-template-rows: auto minmax(1.4em, auto) auto; /* obere Buttons – Text – untere Buttons */
+  grid-template-rows: auto minmax(1.4em, auto) auto;
   align-items: center;
   justify-items: center;
-  row-gap: 2px;          /* minimaler Abstand oberhalb/unterhalb der Schrift */
-  column-gap: 12px;      /* horizontaler Abstand zwischen Buttons */
+  row-gap: 2px;
+  column-gap: 12px;
   padding: 6px 10px;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.3);
@@ -359,26 +363,15 @@ th .sort-arrow { font-size: 0.7rem; color: #ddd }
   margin-bottom: 4px;
   font-size: 0.85rem;
 }
-
 .period-buttons.top-row,
 .period-buttons.bottom-row,
-.period-numbers {
-  display: contents; /* sorgt für Spaltenausrichtung */
-}
-
-/* Die mittleren Beschriftungen */
-.period-numbers span {
-  color: #ccc;
-  font-size: 0.8rem;
-  line-height: 1;
-  justify-self: center;
-  align-self: center;
-}
+.period-numbers { display: contents; }
+.period-numbers span { color: #ccc; font-size: 0.8rem; line-height:1; }
 
 /* Buttons */
 .time-btn {
   width: 100%;
-  height: 20px; /* dünnere Buttons */
+  height: 20px;
   border: none;
   border-radius: 6px;
   font-weight: 600;
@@ -386,103 +379,23 @@ th .sort-arrow { font-size: 0.7rem; color: #ddd }
   cursor: pointer;
   transition: transform 0.1s, background 0.2s;
 }
-
-/* Farben */
 .period-buttons.top-row .time-btn { background: var(--btn-top-bg); }
 .period-buttons.bottom-row .time-btn { background: var(--btn-bottom-bg); }
-
 .period-buttons.top-row .time-btn:hover { background-color: #b2f0b2; }
 .period-buttons.bottom-row .time-btn:hover { background-color: #ffd3d3; }
-
 .time-btn:active { transform: scale(1.05); }
 
 /* =========================================
-   RESPONSIVE
+   SEASON PAGE & TOTAL ROW
    ========================================= */
+#seasonPage table { width: auto; table-layout: auto; border-collapse: collapse; font-size: 0.95rem; margin: 0 auto; }
+#seasonPage th, #seasonPage td { padding: 8px 6px; text-align: center; border-bottom: 1px solid #333; color: var(--text-color); white-space: nowrap; }
+#seasonPage thead th { background: #1f1f1f; position: sticky; top: 0; z-index: 40; padding: 8px 6px; border-bottom: 2px solid #333; text-align:center; }
+#seasonPage tr:nth-child(even) { background-color: var(--row-even); }
+#seasonPage tr:nth-child(odd) { background-color: var(--row-odd); }
+#seasonPage .total-row td { background: #1f1f1f !important; color: var(--text-color) !important; font-weight:700 !important; border-top:2px solid #333; }
+
+/* small responsive */
 @media (max-width: 900px) {
   .torbild-layout { flex-direction: column; height: auto; }
 }
-/* =========================================
-   TORBILD HEADER – fixiert & zentriert
-   ========================================= */
-.torbild-header {
-  position: relative;
-  width: 100%;
-  max-width: 1100px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--header-bg);
-  padding: 8px 12px;
-  border-radius: 8px;
-  box-shadow: 0 3px 8px rgba(0, 0, 0, 0.4);
-  z-index: 1000;
-}
-
-/* Abstand unter dem fixierten Header, damit nichts verdeckt wird */
-#torbildPage, #seasonMapPage {
-  padding-top: calc(var(--sticky-header-height) + 10px);
-}
-
-/* =========================================
-   SEASON HEADER – fixiert & zentriert
-   ========================================= */
-.season-header {
-  position: relative;
-  width: 100%;
-  max-width: 1100px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: var(--header-bg);
-  padding: 8px 12px;
-  border-radius: 8px;
-  box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-  z-index: 1000;
-}
-
-/* SEASON TABELLE */
-#seasonPage table {
-  width: auto;
-  table-layout: auto;
-  border-collapse: collapse;
-  font-size: 0.95rem;
-  margin: 0 auto;
-}
-
-#seasonPage th,
-#seasonPage td {
-  padding: 8px 6px;
-  text-align: center;
-  border-bottom: 1px solid #333;
-  color: var(--text-color);
-  white-space: nowrap;
-}
-
-#seasonPage thead th {
-  background: #1f1f1f;
-  position: sticky;
-  top: 0;
-  z-index: 40;
-  padding: 8px 6px;
-  border-bottom: 2px solid #333;
-  text-align: center;
-}
-
-#seasonPage tr:nth-child(even) { background-color: var(--row-even); }
-#seasonPage tr:nth-child(odd)  { background-color: var(--row-odd); }
-
-/* Total row styling (matches header and bold) */
-#seasonPage .total-row td {
-  background: #1f1f1f !important;
-  color: var(--text-color) !important;
-  font-weight: 700 !important;
-  border-top: 2px solid #333;
-}
-
-/* top-btn season */
-.top-btn.season-btn {
-  background-color: #1E90FF;
-  color: #fff;
-}
-.top-btn.season-btn:hover { background-color: #187bdb; }
