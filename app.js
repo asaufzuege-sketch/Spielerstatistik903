@@ -1,7 +1,10 @@
 // app.js
-// Anpassung: Spielfeld akzeptiert Marker nur auf echten grünen oder roten Flächen (Pixel‑Sampling).
-// Tore: unverändert (weiße/neutral‑weiße Flächen → graue Marker).
-// Restliche App‑Logik (Timers, Exporte, Season usw.) unverändert.
+// Vollständige Datei. WICHTIGSTE ÄNDERUNG:
+// - Klicks in der .field-box werden nur akzeptiert, wenn sie auf der tatsächlich angezeigten Bildfläche
+//   des <img src="Spielfeld Overlay.png"> liegen (bei object-fit:contain also nicht in den Letterbox-/Padding-Bereichen).
+// - Umsetzung: wir berechnen die tatsächlich gerenderte Bildregion im <img>-Element (mittels naturalWidth/naturalHeight + clientWidth/clientHeight)
+//   und verwerfen Klicks außerhalb dieser Region. Bei Sampling (Canvas) wird für die Farberkennung die Position relativ zum Bild verwendet.
+// - Verhalten für Tore (goalGreenBox/goalRedBox) bleibt unverändert.
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
@@ -60,7 +63,7 @@ document.addEventListener("DOMContentLoaded", () => {
   const torbildTimeTrackingBox = document.getElementById("timeTrackingBox");
   const seasonMapTimeTrackingBox = document.getElementById("seasonTimeTrackingBox");
 
-  // --- Dark/Light Mode automatically set ---
+  // --- Dark/Light Mode automatisch setzen ---
   if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     document.documentElement.setAttribute('data-theme', 'dark');
   } else {
@@ -491,7 +494,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // --- Marker helpers with FIELD_RECT fallback and color sampling for field image ---
   const LONG_MARK_MS_INTERNAL = 600;
 
-  // FIELD_RECT fallback if sampling not available (conservative area)
+  // FIELD_RECT fallback if sampling not available (conservative area) - retained but not used to allow outside-image clicks
   const FIELD_RECT = { left: 7, right: 93, top: 5, bottom: 95 }; // percent of image area
 
   function clampPct(v) {
@@ -529,7 +532,6 @@ document.addEventListener("DOMContentLoaded", () => {
         } catch (e) {
           // likely cross-origin tainting -> sampling not available
           sampler.valid = false;
-          // console.warn("Sampler draw failed for", imgEl.src, e);
         }
       }
 
@@ -561,7 +563,7 @@ document.addEventListener("DOMContentLoaded", () => {
         return p.r >= threshold && p.g >= threshold && p.b >= threshold;
       };
 
-      // neutral white stricter check (used for red goal previously)
+      // neutral white stricter check (used for red goal)
       sampler.isNeutralWhiteAt = (xPct, yPct, threshold = 235, maxChannelDiff = 12) => {
         const p = getPixel(xPct, yPct);
         if (!p) return false;
@@ -596,22 +598,22 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
-  function createMarkerPercent(xPct, yPct, color, container, interactive = true) {
-    xPct = clampPct(xPct);
-    yPct = clampPct(yPct);
+  function createMarkerPercent(xPctContainer, yPctContainer, color, container, interactive = true) {
+    xPctContainer = clampPct(xPctContainer);
+    yPctContainer = clampPct(yPctContainer);
     const dot = document.createElement("div");
     dot.className = "marker-dot";
     dot.style.backgroundColor = color;
-    dot.style.left = `${xPct}%`;
-    dot.style.top = `${yPct}%`;
+    dot.style.left = `${xPctContainer}%`;
+    dot.style.top = `${yPctContainer}%`;
     if (interactive) {
       dot.addEventListener("click", (ev) => { ev.stopPropagation(); dot.remove(); });
     }
     container.appendChild(dot);
   }
 
-  // Field: allow marker only if pixel is green OR red on the field image
-  // Goals: unchanged (white/neutral white checks as before) — markers always gray
+  // Field: allow marker only if pixel is green OR red on the field image (and click inside rendered image area).
+  // Goals: unchanged (white detection)
   function createMarkerBasedOn(pos, boxEl, longPress, forceGrey=false) {
     if (!boxEl) return;
 
@@ -619,35 +621,37 @@ document.addEventListener("DOMContentLoaded", () => {
     if (boxEl.classList.contains("field-box")) {
       const img = boxEl.querySelector("img");
       if (img) {
+        // pos has: xPctContainer,yPctContainer and optionally xPctImage,yPctImage,insideImage
+        if (!pos.insideImage) {
+          // Click outside the rendered image (in letterbox/padding) -> ignore
+          return;
+        }
         const sampler = createImageSampler(img);
-        // if sampling available, require green or red pixel
         if (sampler && sampler.valid) {
-          const isGreen = sampler.isGreenAt(pos.xPct, pos.yPct, 110, 30); // thresholds tuned; adjust if needed
-          const isRed = sampler.isRedAt(pos.xPct, pos.yPct, 110, 30);
+          // use image-relative percents for sampling
+          const ix = pos.xPctImage;
+          const iy = pos.yPctImage;
+          const isGreen = sampler.isGreenAt(ix, iy, 110, 30);
+          const isRed = sampler.isRedAt(ix, iy, 110, 30);
           if (isGreen) {
-            createMarkerPercent(pos.xPct, pos.yPct, "#00ff66", boxEl, true);
+            createMarkerPercent(pos.xPctContainer, pos.yPctContainer, "#00ff66", boxEl, true);
             return;
           }
           if (isRed) {
-            createMarkerPercent(pos.xPct, pos.yPct, "#ff0000", boxEl, true);
+            createMarkerPercent(pos.xPctContainer, pos.yPctContainer, "#ff0000", boxEl, true);
             return;
           }
-          // not green or red => ignore click
+          // pixel is neither green nor red -> ignore
           return;
         } else {
-          // sampling not available (e.g. CORS tainted). Fallback: conservative rectangle check
-          // NOTE: fallback is less strict — if you host images same-origin you can remove fallback branch.
-          if (!isInsideRect(pos, FIELD_RECT)) return;
-          // use Y position to pick color as before (best-effort)
-          const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
-          createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
+          // sampling not available (CORS) -> still enforce "only on image" by using pos.insideImage
+          // choose color by vertical position inside image as best-effort
+          const color = pos.yPctImage > 50 ? "#ff0000" : "#00ff66";
+          createMarkerPercent(pos.xPctContainer, pos.yPctContainer, color, boxEl, true);
           return;
         }
       } else {
-        // no img found: fallback to rect rule
-        if (!isInsideRect(pos, FIELD_RECT)) return;
-        const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
-        createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
+        // no image — be conservative and ignore
         return;
       }
     }
@@ -658,31 +662,29 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!img) return;
       const sampler = createImageSampler(img);
       if (!sampler || !sampler.valid) {
-        // conservative: disallow if we can't sample
+        // conservative: disallow if sampling unavailable
         return;
       }
       if (boxEl.id === "goalGreenBox") {
-        const ok = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
+        const ok = sampler.isWhiteAt(pos.xPctContainer, pos.yPctContainer, 220);
         if (!ok) return;
-        createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
+        createMarkerPercent(pos.xPctContainer, pos.yPctContainer, "#444", boxEl, true);
         return;
       }
       if (boxEl.id === "goalRedBox") {
-        const ok = sampler.isNeutralWhiteAt(pos.xPct, pos.yPct, 235, 12);
+        const ok = sampler.isNeutralWhiteAt(pos.xPctContainer, pos.yPctContainer, 235, 12);
         if (!ok) return;
-        createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
+        createMarkerPercent(pos.xPctContainer, pos.yPctContainer, "#444", boxEl, true);
         return;
       }
-      // fallback for other goal images
-      const ok = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
+      const ok = sampler.isWhiteAt(pos.xPctContainer, pos.yPctContainer, 220);
       if (!ok) return;
-      createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
+      createMarkerPercent(pos.xPctContainer, pos.yPctContainer, "#444", boxEl, true);
       return;
     }
 
-    // fallback: require inside field rect
-    if (!isInsideRect(pos, FIELD_RECT)) return;
-    createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
+    // fallback: ignore (do not allow outside image)
+    return;
   }
 
   function clearAllMarkers() {
@@ -704,18 +706,47 @@ document.addEventListener("DOMContentLoaded", () => {
       let lastMouseUp = 0;
       let lastTouchEnd = 0;
 
+      // NEW: Calculate both container-relative percent and image-visible-area-relative percent.
       function getPosFromEvent(e) {
-        const rect = img.getBoundingClientRect();
+        const boxRect = img.getBoundingClientRect(); // element rect
         const clientX = (e.clientX !== undefined) ? e.clientX : (e.touches && e.touches[0] && e.touches[0].clientX);
         const clientY = (e.clientY !== undefined) ? e.clientY : (e.touches && e.touches[0] && e.touches[0].clientY);
-        const xPct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * 100;
-        const yPct = Math.max(0, Math.min(1, (clientY - rect.top) / rect.height)) * 100;
-        return { xPct, yPct };
+
+        // percent relative to the img element box (for goal logic we used this before)
+        const xPctContainer = Math.max(0, Math.min(1, (clientX - boxRect.left) / boxRect.width)) * 100;
+        const yPctContainer = Math.max(0, Math.min(1, (clientY - boxRect.top) / boxRect.height)) * 100;
+
+        // Determine the actual rendered image region inside the img element when object-fit:contain is used.
+        // Use naturalWidth/naturalHeight and the element's CSS content box to compute rendered size.
+        const naturalW = img.naturalWidth || img.width || 1;
+        const naturalH = img.naturalHeight || img.height || 1;
+        const clientW = boxRect.width;
+        const clientH = boxRect.height;
+
+        // scale to fit (contain)
+        const scale = Math.min(clientW / naturalW, clientH / naturalH);
+        const renderedW = naturalW * scale;
+        const renderedH = naturalH * scale;
+
+        // image top-left inside the element (centered)
+        const offsetX = boxRect.left + (clientW - renderedW) / 2;
+        const offsetY = boxRect.top + (clientH - renderedH) / 2;
+
+        const insideImage = (clientX >= offsetX && clientX <= offsetX + renderedW && clientY >= offsetY && clientY <= offsetY + renderedH);
+
+        let xPctImage = 0;
+        let yPctImage = 0;
+        if (insideImage) {
+          xPctImage = Math.max(0, Math.min(1, (clientX - offsetX) / renderedW)) * 100;
+          yPctImage = Math.max(0, Math.min(1, (clientY - offsetY) / renderedH)) * 100;
+        }
+
+        return { xPctContainer, yPctContainer, xPctImage, yPctImage, insideImage };
       }
 
-      // mouse
       img.addEventListener("mousedown", (ev) => {
         isLong = false;
+        if (mouseHoldTimer) clearTimeout(mouseHoldTimer);
         mouseHoldTimer = setTimeout(() => {
           isLong = true;
           const pos = getPosFromEvent(ev);
@@ -880,6 +911,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function exportSeasonMapFromTorbild() {
+    // collect markers for torbild boxes (in DOM order)
     const boxes = Array.from(document.querySelectorAll(torbildBoxesSelector));
     const allMarkers = boxes.map(box => {
       const markers = [];
@@ -895,14 +927,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     localStorage.setItem("seasonMapMarkers", JSON.stringify(allMarkers));
 
+    // copy time tracking from torbild time box
     const timeData = readTimeTrackingFromBox(torbildTimeTrackingBox);
     localStorage.setItem("seasonMapTimeData", JSON.stringify(timeData));
 
+    // navigate and render
     showPageRef("seasonMap");
     renderSeasonMapPage();
   }
 
   function renderSeasonMapPage() {
+    // clear seasonMap markers
     const boxes = Array.from(document.querySelectorAll(seasonMapBoxesSelector));
     boxes.forEach(box => box.querySelectorAll(".marker-dot").forEach(d => d.remove()));
 
@@ -926,6 +961,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const tdata = JSON.parse(rawTime);
         writeTimeTrackingToBox(seasonMapTimeTrackingBox, tdata);
+        // ensure time buttons remain disabled/read-only
         seasonMapTimeTrackingBox.querySelectorAll(".time-btn").forEach(btn => {
           btn.disabled = true;
           btn.classList.add("disabled-readonly");
