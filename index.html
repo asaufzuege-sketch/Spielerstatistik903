@@ -1,0 +1,267 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Spielerstatistik</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- SPIELERAUSWAHL -->
+  <div id="playerSelectionPage" class="page">
+    <h1>Spielerauswahl</h1>
+    <p class="center-text">Wähle die Spieler, die in der Tabelle angezeigt werden sollen</p>
+    <ul id="playerList" class="player-list"></ul>
+    <button id="confirmSelection" class="confirm-btn">Bestätigen</button>
+  </div>
+
+  <!-- STATS SEITE -->
+  <div id="statsPage" class="page" style="display:none;">
+    <div class="sticky-header" id="stickyHeader">
+      <div class="top-bar">
+        <button id="selectPlayersBtn" class="top-btn">Spieler wählen</button>
+        <button id="timerBtn" class="top-btn timer reset">00:00</button>
+        <button id="torbildBtn" class="top-btn">Torbild</button>
+        <button id="seasonBtn" class="top-btn">Season</button>
+        <button id="seasonMapBtn" class="top-btn">Season Map</button>
+        <button id="exportBtn" class="top-btn">Export CSV</button>
+        <button id="exportSeasonFromStatsBtn" class="top-btn season-btn">Export Season</button>
+        <button id="resetBtn" class="top-btn danger-btn">Reset</button>
+      </div>
+    </div>
+    <div id="statsScrollContainer">
+      <div id="statsContainer"></div>
+    </div>
+  </div>
+
+  <!-- TORBILD SEITE -->
+  <div id="torbildPage" class="page" style="display:none;">
+    <div class="torbild-header">
+      <button id="backToStatsBtn" class="top-btn back-btn">← Zurück</button>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button id="exportSeasonMapBtn" class="top-btn">Export Season Map</button>
+        <button id="resetTorbildBtn" class="top-btn danger-btn reset-btn">Reset</button>
+      </div>
+    </div>
+
+    <div class="torbild-layout">
+      <!-- Linke Spalte: Spielfeld -->
+      <div class="field-column">
+        <div class="img-box field-box">
+          <img src="Spielfeld Overlay.png" alt="Spielfeld Overlay" />
+        </div>
+      </div>
+
+      <!-- Rechte Spalte: Tore & Zeittracking -->
+      <div class="goal-column">
+
+        <!-- Tor Grün -->
+        <div class="img-box goal-img-box" id="goalGreenBox">
+          <img src="Tor Grün.png" alt="Tor (Grün)" />
+        </div>
+
+        <!-- Tor Rot -->
+        <div class="img-box goal-img-box" id="goalRedBox">
+          <img src="Tor Rot.png" alt="Tor (Rot)" />
+        </div>
+
+        <!-- Zeittracking Box -->
+        <div class="time-tracking-box" id="timeTrackingBox">
+          <!-- 1. Periode -->
+          <div class="period" data-period="p1">
+            <div class="period-title">1st Period</div>
+            <div class="period-buttons top-row">
+              <button class="time-btn">19</button>
+              <button class="time-btn">18</button>
+              <button class="time-btn">17</button>
+              <button class="time-btn">16</button>
+            </div>
+            <div class="period-numbers">
+              <span class=" num-center">19 - 15</span>
+              <span class="num-center">14 - 10</span>
+              <span class="num-center">9 - 5</span>
+              <span class="num-center">4 - 0</span>
+            </div>
+            <div class="period-buttons bottom-row">
+              <button class="time-btn">15</button>
+              <button class="time-btn">14</button>
+              <button class="time-btn">13</button>
+              <button class="time-btn">12</button>
+            </div>
+          </div>
+
+          <!-- 2. Periode -->
+          <div class="period" data-period="p2">
+            <div class="period-title">2nd Period</div>
+            <div class="period-buttons top-row">
+              <button class="time-btn">19</button>
+              <button class="time-btn">18</button>
+              <button class="time-btn">17</button>
+              <button class="time-btn">16</button>
+            </div>
+            <div class="period-numbers">
+              <span class=" num-center">19 - 15</span>
+              <span class="num-center">14 - 10</span>
+              <span class="num-center">9 - 5</span>
+              <span class="num-center">4 - 0</span>
+            </div>
+            <div class="period-buttons bottom-row">
+              <button class="time-btn">15</button>
+              <button class="time-btn">14</button>
+              <button class="time-btn">13</button>
+              <button class="time-btn">12</button>
+            </div>
+          </div>
+
+          <!-- 3. Periode -->
+          <div class="period" data-period="p3">
+            <div class="period-title">3rd Period</div>
+            <div class="period-buttons top-row">
+              <button class="time-btn">19</button>
+              <button class="time-btn">18</button>
+              <button class="time-btn">17</button>
+              <button class="time-btn">16</button>
+            </div>
+            <div class="period-numbers">
+              <span class=" num-center">19 - 15</span>
+              <span class="num-center">14 - 10</span>
+              <span class="num-center">9 - 5</span>
+              <span class="num-center">4 - 0</span>
+            </div>
+            <div class="period-buttons bottom-row">
+              <button class="time-btn">15</button>
+              <button class="time-btn">14</button>
+              <button class="time-btn">13</button>
+              <button class="time-btn">12</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SEASON SEITE -->
+  <div id="seasonPage" class="page" style="display:none;">
+    <div class="sticky-header season-header">
+      <div class="top-bar" style="width:100%; display:flex; align-items:center; gap:8px;">
+        <button id="backToStatsFromSeasonBtn" class="top-btn">← Zurück</button>
+        <div style="flex:1"></div>
+        <button id="exportSeasonBtn" class="top-btn">Export CSV</button>
+        <button id="resetSeasonBtn" class="top-btn danger-btn">Reset</button>
+      </div>
+    </div>
+
+    <h1>Season Statistiken</h1>
+    <div id="seasonContainer"></div>
+  </div>
+
+  <!-- SEASON MAP SEITE (gleiche Struktur wie Torbild) -->
+  <div id="seasonMapPage" class="page" style="display:none;">
+    <div class="torbild-header">
+      <button id="backToStatsFromSeasonMapBtn" class="top-btn back-btn">← Zurück</button>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <button id="exportSeasonMapFromMapBtn" class="top-btn">Export Season Map</button>
+        <button id="resetSeasonMapBtn" class="top-btn danger-btn reset-btn">Reset</button>
+      </div>
+    </div>
+
+    <div class="torbild-layout">
+      <!-- Linke Spalte: Spielfeld -->
+      <div class="field-column">
+        <div class="img-box field-box" id="seasonMapFieldBox">
+          <img src="Spielfeld Overlay.png" alt="Spielfeld Overlay" />
+        </div>
+      </div>
+
+      <!-- Rechte Spalte: Tore & Zeittracking -->
+      <div class="goal-column">
+
+        <!-- Tor Grün -->
+        <div class="img-box goal-img-box" id="seasonMapGoalGreenBox">
+          <img src="Tor Grün.png" alt="Tor (Grün)" />
+        </div>
+
+        <!-- Tor Rot -->
+        <div class="img-box goal-img-box" id="seasonMapGoalRedBox">
+          <img src="Tor Rot.png" alt="Tor (Rot)" />
+        </div>
+
+        <!-- Zeittracking Box -->
+        <div class="time-tracking-box" id="seasonMapTimeTrackingBox">
+          <!-- copy same periods as torbild -->
+          <div class="period" data-period="mp1">
+            <div class="period-title">1st Period</div>
+            <div class="period-buttons top-row">
+              <button class="time-btn">19</button>
+              <button class="time-btn">18</button>
+              <button class="time-btn">17</button>
+              <button class="time-btn">16</button>
+            </div>
+            <div class="period-numbers">
+              <span class=" num-center">19 - 15</span>
+              <span class="num-center">14 - 10</span>
+              <span class="num-center">9 - 5</span>
+              <span class="num-center">4 - 0</span>
+            </div>
+            <div class="period-buttons bottom-row">
+              <button class="time-btn">15</button>
+              <button class="time-btn">14</button>
+              <button class="time-btn">13</button>
+              <button class="time-btn">12</button>
+            </div>
+          </div>
+
+          <div class="period" data-period="mp2">
+            <div class="period-title">2nd Period</div>
+            <div class="period-buttons top-row">
+              <button class="time-btn">19</button>
+              <button class="time-btn">18</button>
+              <button class="time-btn">17</button>
+              <button class="time-btn">16</button>
+            </div>
+            <div class="period-numbers">
+              <span class=" num-center">19 - 15</span>
+              <span class="num-center">14 - 10</span>
+              <span class="num-center">9 - 5</span>
+              <span class="num-center">4 - 0</span>
+            </div>
+            <div class="period-buttons bottom-row">
+              <button class="time-btn">15</button>
+              <button class="time-btn">14</button>
+              <button class="time-btn">13</button>
+              <button class="time-btn">12</button>
+            </div>
+          </div>
+
+          <div class="period" data-period="mp3">
+            <div class="period-title">3rd Period</div>
+            <div class="period-buttons top-row">
+              <button class="time-btn">19</button>
+              <button class="time-btn">18</button>
+              <button class="time-btn">17</button>
+              <button class="time-btn">16</button>
+            </div>
+            <div class="period-numbers">
+              <span class=" num-center">19 - 15</span>
+              <span class="num-center">14 - 10</span>
+              <span class="num-center">9 - 5</span>
+              <span class="num-center">4 - 0</span>
+            </div>
+            <div class="period-buttons bottom-row">
+              <button class="time-btn">15</button>
+              <button class="time-btn">14</button>
+              <button class="time-btn">13</button>
+              <button class="time-btn">12</button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Skript am Ende -->
+  <script src="app.js"></script>
+</body>
+</html>
