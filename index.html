@@ -38,14 +38,14 @@
 
   <!-- GOAL MAP SEITE (früher Torbild) -->
   <div id="torbildPage" class="page" style="display:none;">
-    <div class="torbild-header">
+    <div class="torbild-header" style="display:flex;align-items:center;">
       <div style="display:flex;gap:8px;align-items:center;">
         <button id="backToStatsBtn" class="top-btn back-btn">← Zurück</button>
-        <button id="resetTorbildBtn" class="top-btn danger-btn reset-btn">Reset</button>
+        <button id="exportSeasonMapBtn" class="top-btn season-btn">Export Season Map</button>
       </div>
       <div style="flex:1"></div>
       <div style="display:flex;gap:8px;align-items:center;">
-        <button id="exportSeasonMapBtn" class="top-btn">Export Season Map</button>
+        <button id="resetTorbildBtn" class="top-btn danger-btn reset-btn">Reset</button>
       </div>
     </div>
 
@@ -152,9 +152,12 @@
 
   <!-- SEASON MAP PAGE (read-only map & timeboxes; values imported only) -->
   <div id="seasonMapPage" class="page" style="display:none;">
-    <div class="torbild-header">
+    <div class="torbild-header" style="display:flex;align-items:center;">
       <div style="display:flex;gap:8px;align-items:center;">
         <button id="backToStatsFromSeasonMapBtn" class="top-btn back-btn">← Zurück</button>
+      </div>
+      <div style="flex:1"></div>
+      <div style="display:flex;gap:8px;align-items:center;">
         <button id="resetSeasonMapBtn" class="top-btn danger-btn reset-btn">Reset</button>
       </div>
     </div>
