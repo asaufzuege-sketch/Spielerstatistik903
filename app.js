@@ -1,11 +1,7 @@
 // app.js
-// Vollständig aktualisierte Version mit eingeschränkter Marker-Platzierung:
-// - Spielfeld: Marker nur innerhalb des inneren Feldes (Rahmen ausgeschlossen).
-// - Tore: Marker nur gesetzt, wenn die angeklickte Pixelregion auf dem Torbild weiß/hell ist.
-//         Marker in Toren sind immer grau.
-// - Keine Verwendung von eval/new Function oder setTimeout/setInterval mit String-Args.
-// - showPage stub early, full implementation later.
-// Persistenz via localStorage.
+// Anpassung: Spielfeld-Box (FIELD_RECT) definiert; Marker auf Spielfeld nur innerhalb dieser Box erlaubt.
+// Tore bleiben per white-area Sampling wie zuvor (Marker in Toren sind grau).
+// Restliche App-Funktionalität (Timer, Exporte, Season, etc.) enthalten.
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
@@ -199,7 +195,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // expose renderPlayerSelection
+  // expose renderPlayerSelection to rest of file
   window.__renderPlayerSelection = renderPlayerSelection;
 
   // --- Eiszeitfarben dynamisch setzen ---
@@ -492,85 +488,69 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Marker helpers with placement restrictions (field frame exclusion + goal white-area check) ---
+  // --- Marker helpers with FIELD_RECT (fixed box) and goal sampling ---
   const LONG_MARK_MS = 600;
 
-  // Percents define the inner allowed field area (tweak if your field image cropping differs).
-  const FIELD_MARGIN = { left: 3, right: 97, top: 3, bottom: 97 }; // only allow markers inside these % bounds for field-box
+  // FIELD: use a fixed rectangle (percent) to allow placements only inside real field
+  // Anpassbare Werte: passe diese an, bis Marker nur innerhalb tatsächlicher Spielfeldfläche landen.
+  const FIELD_RECT = { left: 6, right: 94, top: 4, bottom: 96 }; // in Percent (0..100)
 
-  // Utility clamp / rect checks
-  function clampPct(v) { if (v < 0) return 0; if (v > 100) return 100; return v; }
-  function isInsideRect(pos, rect) { return pos.xPct >= rect.left && pos.xPct <= rect.right && pos.yPct >= rect.top && pos.yPct <= rect.bottom; }
+  function clampPct(v) {
+    if (v < 0) return 0;
+    if (v > 100) return 100;
+    return v;
+  }
+  function isInsideRect(pos, rect) {
+    return pos.xPct >= rect.left && pos.xPct <= rect.right && pos.yPct >= rect.top && pos.yPct <= rect.bottom;
+  }
 
-  // create or reuse an offscreen canvas for an <img> to sample pixel colors.
-  // returns an object { isWhiteAt(xPct,yPct) } or null if sampling not possible (e.g. tainted canvas).
+  // Image sampler for goal boxes (white area detection)
   const samplerCache = new WeakMap();
   function createImageSampler(imgEl) {
     if (!imgEl) return null;
     if (samplerCache.has(imgEl)) return samplerCache.get(imgEl);
-
-    const sampler = { valid: false, canvas: null, ctx: null, imgW: 0, imgH: 0 };
-
-    // try to create canvas and draw image into it
+    const sampler = { valid: false, canvas: null, ctx: null };
     try {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
       sampler.canvas = canvas;
       sampler.ctx = ctx;
-      sampler.imgW = imgEl.naturalWidth || imgEl.width;
-      sampler.imgH = imgEl.naturalHeight || imgEl.height;
-      canvas.width = sampler.imgW;
-      canvas.height = sampler.imgH;
-      // draw when image is loaded — if already complete, draw now
-      function drawImageToCanvas() {
+      function draw() {
         try {
-          canvas.width = sampler.imgW;
-          canvas.height = sampler.imgH;
-          ctx.clearRect(0,0,canvas.width, canvas.height);
-          ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+          const w = imgEl.naturalWidth || imgEl.width || 1;
+          const h = imgEl.naturalHeight || imgEl.height || 1;
+          canvas.width = w;
+          canvas.height = h;
+          ctx.clearRect(0,0,w,h);
+          ctx.drawImage(imgEl, 0, 0, w, h);
           sampler.valid = true;
         } catch (e) {
-          // likely cross-origin tainting -> mark invalid
           sampler.valid = false;
-          console.warn("Image sampling disabled for", imgEl.src, e);
         }
       }
-      if (imgEl.complete && sampler.imgW && sampler.imgH) {
-        drawImageToCanvas();
-      } else {
-        imgEl.addEventListener("load", () => {
-          sampler.imgW = imgEl.naturalWidth || imgEl.width;
-          sampler.imgH = imgEl.naturalHeight || imgEl.height;
-          drawImageToCanvas();
-        });
-        imgEl.addEventListener("error", () => {
-          sampler.valid = false;
-        });
+      if (imgEl.complete) draw();
+      else {
+        imgEl.addEventListener("load", draw);
+        imgEl.addEventListener("error", () => { sampler.valid = false; });
       }
-
-      sampler.isWhiteAt = (xPct, yPct, threshold = 230) => {
-        if (!sampler.valid) return false; // disallow if we can't sample
-        const px = Math.round((xPct/100) * (sampler.canvas.width - 1));
-        const py = Math.round((yPct/100) * (sampler.canvas.height - 1));
+      sampler.isWhiteAt = (xPct, yPct, threshold = 220) => {
+        if (!sampler.valid) return false;
+        const px = Math.round((xPct/100) * (canvas.width - 1));
+        const py = Math.round((yPct/100) * (canvas.height - 1));
         try {
           const d = ctx.getImageData(px, py, 1, 1).data;
           const r = d[0], g = d[1], b = d[2], a = d[3];
-          // consider pixel white if rgb components above threshold and not transparent
           if (a === 0) return false;
           return r >= threshold && g >= threshold && b >= threshold;
         } catch (e) {
-          // reading failed (tainted) -> mark invalid and disallow
           sampler.valid = false;
-          console.warn("Image sampling failed (tainted?), disabling for", imgEl.src, e);
           return false;
         }
       };
-
       samplerCache.set(imgEl, sampler);
       return sampler;
     } catch (err) {
-      console.warn("Failed to create image sampler", err);
-      samplerCache.set(imgEl, { valid: false, isWhiteAt: () => false });
+      samplerCache.set(imgEl, { valid:false, isWhiteAt: ()=>false });
       return samplerCache.get(imgEl);
     }
   }
@@ -589,43 +569,38 @@ document.addEventListener("DOMContentLoaded", () => {
     container.appendChild(dot);
   }
 
-  // create marker only when allowed (field margins, or goal image white area)
+  // createMarkerBasedOn: FIELD uses FIELD_RECT; GOAL uses white-area sampling and gray markers
   function createMarkerBasedOn(pos, boxEl, longPress, forceGrey=false) {
     if (!boxEl) return;
 
-    // FIELD: only allow markers inside FIELD_MARGIN
+    // FIELD: only allow placements within FIELD_RECT
     if (boxEl.classList.contains("field-box")) {
-      if (!isInsideRect(pos, FIELD_MARGIN)) {
-        // outside allowed field, ignore
+      if (!isInsideRect(pos, FIELD_RECT)) {
         return;
       }
-      const color = pos.yPct > 50 ? "#ff0000" : "#00ff66"; // keep field color logic
+      // keep existing field coloring (green/red depending on y)
+      const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
       createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
       return;
     }
 
-    // GOAL BOX: sample image pixel — only place marker if pixel is white/bright.
+    // GOAL: sample pixel and require white-ish; markers always gray
     if (boxEl.classList.contains("goal-img-box") || boxEl.id === "goalGreenBox" || boxEl.id === "goalRedBox") {
       const img = boxEl.querySelector("img");
       if (!img) return;
       const sampler = createImageSampler(img);
-      // if sampler invalid, be conservative: disallow placement
       if (!sampler || !sampler.valid) {
-        // If you want fallback behavior, change here to allow or compute bounding rect heuristics.
+        // conservative: disallow if we can't sample
         return;
       }
-      const isWhite = sampler.isWhiteAt(pos.xPct, pos.yPct, 220); // threshold 220 for white-ish
-      if (!isWhite) {
-        // clicked pixel is not on white area -> ignore
-        return;
-      }
-      // markers in goals must be gray only
+      const isWhite = sampler.isWhiteAt(pos.xPct, pos.yPct, 220);
+      if (!isWhite) return;
       createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
       return;
     }
 
-    // fallback: require within field margin
-    if (!isInsideRect(pos, FIELD_MARGIN)) return;
+    // fallback: disallow outside field rect
+    if (!isInsideRect(pos, FIELD_RECT)) return;
     createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
   }
 
@@ -640,7 +615,7 @@ document.addEventListener("DOMContentLoaded", () => {
       if (!img) return;
       box.style.position = "relative";
 
-      // Pre-create sampler for goal images (will populate when image loaded)
+      // prepare sampler for images (goals)
       createImageSampler(img);
 
       let mouseHoldTimer = null;
@@ -825,6 +800,7 @@ document.addEventListener("DOMContentLoaded", () => {
   }
 
   function exportSeasonMapFromTorbild() {
+    // collect markers for torbild boxes (in DOM order)
     const boxes = Array.from(document.querySelectorAll(torbildBoxesSelector));
     const allMarkers = boxes.map(box => {
       const markers = [];
@@ -840,14 +816,17 @@ document.addEventListener("DOMContentLoaded", () => {
     });
     localStorage.setItem("seasonMapMarkers", JSON.stringify(allMarkers));
 
+    // copy time tracking from torbild time box
     const timeData = readTimeTrackingFromBox(torbildTimeTrackingBox);
     localStorage.setItem("seasonMapTimeData", JSON.stringify(timeData));
 
+    // navigate and render
     showPageRef("seasonMap");
     renderSeasonMapPage();
   }
 
   function renderSeasonMapPage() {
+    // clear seasonMap markers
     const boxes = Array.from(document.querySelectorAll(seasonMapBoxesSelector));
     boxes.forEach(box => box.querySelectorAll(".marker-dot").forEach(d => d.remove()));
 
@@ -871,6 +850,7 @@ document.addEventListener("DOMContentLoaded", () => {
       try {
         const tdata = JSON.parse(rawTime);
         writeTimeTrackingToBox(seasonMapTimeTrackingBox, tdata);
+        // ensure time buttons remain disabled/read-only
         seasonMapTimeTrackingBox.querySelectorAll(".time-btn").forEach(btn => {
           btn.disabled = true;
           btn.classList.add("disabled-readonly");
@@ -904,7 +884,7 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
   if (backToStatsFromSeasonMapBtn) backToStatsFromSeasonMapBtn.addEventListener("click", () => showPageRef("stats"));
-  if (document.getElementById("resetSeasonMapBtn")) document.getElementById("resetSeasonMapBtn").addEventListener("click", resetSeasonMap);
+  if (resetSeasonMapBtn) resetSeasonMapBtn.addEventListener("click", resetSeasonMap);
 
   // --- Season export (Stats -> Season) ---
   const exportSeasonHandler = () => {
@@ -974,7 +954,7 @@ document.addEventListener("DOMContentLoaded", () => {
     exportSeasonFromStatsBtn.addEventListener("click", exportSeasonHandler);
   }
 
-  // --- Season table rendering (full) ---
+  // --- Season table rendering (full, with sorting and total row) ---
   function formatTimeMMSS(sec) {
     const mm = String(Math.floor(sec / 60)).padStart(2, "0");
     const ss = String(sec % 60).padStart(2, "0");
@@ -1031,6 +1011,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
     const tbody = document.createElement("tbody");
 
+    // Build rows array from seasonData
     const rows = Object.keys(seasonData).map(name => {
       const d = seasonData[name];
       const games = Number(d.games || 0);
@@ -1045,21 +1026,43 @@ document.addEventListener("DOMContentLoaded", () => {
       const faceOffPercent = faceOffs ? Math.round((faceOffsWon / faceOffs) * 100) : 0;
       const timeSeconds = Number(d.timeSeconds || 0);
 
+      // per-game metrics with one decimal
       const avgPlusMinus = games ? (plusMinus / games) : 0;
       const shotsPerGame = games ? (shots / games) : 0;
       const goalsPerGame = games ? (goals / games) : 0;
       const pointsPerGame = games ? (points / games) : 0;
 
+      const mvpPoints = "";
+      const mvp = "";
+      const goalValue = "";
+
       const cells = [
-        "", "", d.num || "", d.name, games, goals, assists, points, plusMinus,
-        Number(avgPlusMinus.toFixed(1)), shots, Number(shotsPerGame.toFixed(1)),
-        Number(goalsPerGame.toFixed(1)), Number(pointsPerGame.toFixed(1)),
-        penalty, "", faceOffs, faceOffsWon, `${faceOffPercent}%`, formatTimeMMSS(timeSeconds)
+        mvpPoints,
+        mvp,
+        d.num || "",
+        d.name,
+        games,
+        goals,
+        assists,
+        points,
+        plusMinus,
+        Number(avgPlusMinus.toFixed(1)),
+        shots,
+        Number(shotsPerGame.toFixed(1)),
+        Number(goalsPerGame.toFixed(1)),
+        Number(pointsPerGame.toFixed(1)),
+        penalty,
+        goalValue,
+        faceOffs,
+        faceOffsWon,
+        `${faceOffPercent}%`,
+        formatTimeMMSS(timeSeconds)
       ];
 
       return { name: d.name, num: d.num || "", cells, raw: { games, goals, assists, points, plusMinus, shots, penalty, faceOffs, faceOffsWon, faceOffPercent, timeSeconds } };
     });
 
+    // initial sort
     let displayRows = rows.slice();
     if (seasonSort.index === null) {
       displayRows.sort((a,b) => (b.raw.points || 0) - (a.raw.points || 0));
@@ -1075,6 +1078,7 @@ document.addEventListener("DOMContentLoaded", () => {
       });
     }
 
+    // build tbody rows
     displayRows.forEach(r => {
       const tr = document.createElement("tr");
       r.cells.forEach(c => {
@@ -1085,18 +1089,28 @@ document.addEventListener("DOMContentLoaded", () => {
       tbody.appendChild(tr);
     });
 
+    // Total/Average row
     const count = rows.length || 0;
     const sampleTh = headerRow.querySelector("th");
     const headerBg = sampleTh ? getComputedStyle(sampleTh).backgroundColor : "#1f1f1f";
     const headerColor = sampleTh ? getComputedStyle(sampleTh).color : getComputedStyle(document.documentElement).getPropertyValue('--text-color') || "#fff";
 
     if (count > 0) {
-      const sums = { games:0, goals:0, assists:0, points:0, plusMinus:0, shots:0, penalty:0, faceOffs:0, faceOffsWon:0, timeSeconds:0 };
+      const sums = {
+        games: 0, goals: 0, assists: 0, points: 0, plusMinus: 0,
+        shots: 0, penalty: 0, faceOffs: 0, faceOffsWon: 0, timeSeconds: 0
+      };
       rows.forEach(r => {
         const rs = r.raw;
-        sums.games += rs.games; sums.goals += rs.goals; sums.assists += rs.assists;
-        sums.points += rs.points; sums.plusMinus += rs.plusMinus; sums.shots += rs.shots;
-        sums.penalty += rs.penalty; sums.faceOffs += rs.faceOffs; sums.faceOffsWon += rs.faceOffsWon;
+        sums.games += rs.games;
+        sums.goals += rs.goals;
+        sums.assists += rs.assists;
+        sums.points += rs.points;
+        sums.plusMinus += rs.plusMinus;
+        sums.shots += rs.shots;
+        sums.penalty += rs.penalty;
+        sums.faceOffs += rs.faceOffs;
+        sums.faceOffsWon += rs.faceOffsWon;
         sums.timeSeconds += rs.timeSeconds;
       });
 
@@ -1172,6 +1186,7 @@ document.addEventListener("DOMContentLoaded", () => {
     table.appendChild(tbody);
     container.appendChild(table);
 
+    // Sorting UI
     function updateSortUI() {
       const ths = table.querySelectorAll("th.sortable");
       ths.forEach(th => {
