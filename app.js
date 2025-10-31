@@ -1,11 +1,11 @@
 // app.js
-// Vollständig aktualisierte Version mit UI-Positionen / Klassen und Marker‑Einschränkungen.
-// - Marker nur innerhalb des Spielfeldes gesetzt (kein Rahmen).
-// - Marker in Tor-Boxen nur innerhalb definierter Tor‑Rect gesetzt.
-// - Torhüterbereich (Kreis) wird ignoriert.
-// - Export Season buttons haben Klasse .season-btn (blau).
-// - Keine eval/new Function oder setTimeout/setInterval mit String-Args.
-// - showPage stub exists early and full implementation overwrites it later.
+// Vollständig aktualisierte Version mit eingeschränkter Marker-Platzierung:
+// - Spielfeld: Marker nur innerhalb des inneren Feldes (Rahmen ausgeschlossen).
+// - Tore: Marker nur gesetzt, wenn die angeklickte Pixelregion auf dem Torbild weiß/hell ist.
+//         Marker in Toren sind immer grau.
+// - Keine Verwendung von eval/new Function oder setTimeout/setInterval mit String-Args.
+// - showPage stub early, full implementation later.
+// Persistenz via localStorage.
 
 document.addEventListener("DOMContentLoaded", () => {
   // --- Elements ---
@@ -492,27 +492,87 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   }
 
-  // --- Marker helpers with placement restrictions ---
+  // --- Marker helpers with placement restrictions (field frame exclusion + goal white-area check) ---
   const LONG_MARK_MS = 600;
 
-  // Percent-based allowed areas and keeper area (tweak as needed)
-  const FIELD_MARGIN = { left: 3, right: 97, top: 3, bottom: 97 }; // percent area inside field image
-  const GOAL_RECT = { left: 10, right: 90, top: 10, bottom: 90 }; // percent area inside goal image where markers allowed
-  const GOAL_KEEPER = { x: 50, y: 50, r: 14 }; // keeper center (%) and radius (%) for excluding markers
+  // Percents define the inner allowed field area (tweak if your field image cropping differs).
+  const FIELD_MARGIN = { left: 3, right: 97, top: 3, bottom: 97 }; // only allow markers inside these % bounds for field-box
 
-  function clampPct(v) {
-    if (v < 0) return 0;
-    if (v > 100) return 100;
-    return v;
-  }
-  function isInsideRect(pos, rect) {
-    return pos.xPct >= rect.left && pos.xPct <= rect.right && pos.yPct >= rect.top && pos.yPct <= rect.bottom;
-  }
-  function isInsideCircle(pos, center, radius) {
-    const dx = pos.xPct - center.x;
-    const dy = pos.yPct - center.y;
-    const dist = Math.sqrt(dx*dx + dy*dy);
-    return dist <= radius;
+  // Utility clamp / rect checks
+  function clampPct(v) { if (v < 0) return 0; if (v > 100) return 100; return v; }
+  function isInsideRect(pos, rect) { return pos.xPct >= rect.left && pos.xPct <= rect.right && pos.yPct >= rect.top && pos.yPct <= rect.bottom; }
+
+  // create or reuse an offscreen canvas for an <img> to sample pixel colors.
+  // returns an object { isWhiteAt(xPct,yPct) } or null if sampling not possible (e.g. tainted canvas).
+  const samplerCache = new WeakMap();
+  function createImageSampler(imgEl) {
+    if (!imgEl) return null;
+    if (samplerCache.has(imgEl)) return samplerCache.get(imgEl);
+
+    const sampler = { valid: false, canvas: null, ctx: null, imgW: 0, imgH: 0 };
+
+    // try to create canvas and draw image into it
+    try {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      sampler.canvas = canvas;
+      sampler.ctx = ctx;
+      sampler.imgW = imgEl.naturalWidth || imgEl.width;
+      sampler.imgH = imgEl.naturalHeight || imgEl.height;
+      canvas.width = sampler.imgW;
+      canvas.height = sampler.imgH;
+      // draw when image is loaded — if already complete, draw now
+      function drawImageToCanvas() {
+        try {
+          canvas.width = sampler.imgW;
+          canvas.height = sampler.imgH;
+          ctx.clearRect(0,0,canvas.width, canvas.height);
+          ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+          sampler.valid = true;
+        } catch (e) {
+          // likely cross-origin tainting -> mark invalid
+          sampler.valid = false;
+          console.warn("Image sampling disabled for", imgEl.src, e);
+        }
+      }
+      if (imgEl.complete && sampler.imgW && sampler.imgH) {
+        drawImageToCanvas();
+      } else {
+        imgEl.addEventListener("load", () => {
+          sampler.imgW = imgEl.naturalWidth || imgEl.width;
+          sampler.imgH = imgEl.naturalHeight || imgEl.height;
+          drawImageToCanvas();
+        });
+        imgEl.addEventListener("error", () => {
+          sampler.valid = false;
+        });
+      }
+
+      sampler.isWhiteAt = (xPct, yPct, threshold = 230) => {
+        if (!sampler.valid) return false; // disallow if we can't sample
+        const px = Math.round((xPct/100) * (sampler.canvas.width - 1));
+        const py = Math.round((yPct/100) * (sampler.canvas.height - 1));
+        try {
+          const d = ctx.getImageData(px, py, 1, 1).data;
+          const r = d[0], g = d[1], b = d[2], a = d[3];
+          // consider pixel white if rgb components above threshold and not transparent
+          if (a === 0) return false;
+          return r >= threshold && g >= threshold && b >= threshold;
+        } catch (e) {
+          // reading failed (tainted) -> mark invalid and disallow
+          sampler.valid = false;
+          console.warn("Image sampling failed (tainted?), disabling for", imgEl.src, e);
+          return false;
+        }
+      };
+
+      samplerCache.set(imgEl, sampler);
+      return sampler;
+    } catch (err) {
+      console.warn("Failed to create image sampler", err);
+      samplerCache.set(imgEl, { valid: false, isWhiteAt: () => false });
+      return samplerCache.get(imgEl);
+    }
   }
 
   function createMarkerPercent(xPct, yPct, color, container, interactive = true) {
@@ -529,38 +589,42 @@ document.addEventListener("DOMContentLoaded", () => {
     container.appendChild(dot);
   }
 
+  // create marker only when allowed (field margins, or goal image white area)
   function createMarkerBasedOn(pos, boxEl, longPress, forceGrey=false) {
     if (!boxEl) return;
-    // field-box: allow only inside FIELD_MARGIN
+
+    // FIELD: only allow markers inside FIELD_MARGIN
     if (boxEl.classList.contains("field-box")) {
       if (!isInsideRect(pos, FIELD_MARGIN)) {
-        // ignore placements in the frame outside the field area
+        // outside allowed field, ignore
         return;
       }
-      const color = pos.yPct > 50 ? "#ff0000" : "#00ff66";
+      const color = pos.yPct > 50 ? "#ff0000" : "#00ff66"; // keep field color logic
       createMarkerPercent(pos.xPct, pos.yPct, color, boxEl, true);
       return;
     }
 
-    // goal boxes: allow only inside GOAL_RECT and prevent keeper area
-    if (boxEl.id === "goalGreenBox" || boxEl.id === "goalRedBox" || boxEl.classList.contains("goal-img-box")) {
-      if (!isInsideRect(pos, GOAL_RECT)) {
+    // GOAL BOX: sample image pixel — only place marker if pixel is white/bright.
+    if (boxEl.classList.contains("goal-img-box") || boxEl.id === "goalGreenBox" || boxEl.id === "goalRedBox") {
+      const img = boxEl.querySelector("img");
+      if (!img) return;
+      const sampler = createImageSampler(img);
+      // if sampler invalid, be conservative: disallow placement
+      if (!sampler || !sampler.valid) {
+        // If you want fallback behavior, change here to allow or compute bounding rect heuristics.
         return;
       }
-      if (isInsideCircle(pos, { x: GOAL_KEEPER.x, y: GOAL_KEEPER.y }, GOAL_KEEPER.r)) {
-        // clicked on keeper area -> ignore
+      const isWhite = sampler.isWhiteAt(pos.xPct, pos.yPct, 220); // threshold 220 for white-ish
+      if (!isWhite) {
+        // clicked pixel is not on white area -> ignore
         return;
       }
-      if (longPress || forceGrey) {
-        createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
-        return;
-      }
-      const goalColor = boxEl.id === "goalGreenBox" ? "#00aa44" : (boxEl.id === "goalRedBox" ? "#ff3333" : "#444");
-      createMarkerPercent(pos.xPct, pos.yPct, goalColor, boxEl, true);
+      // markers in goals must be gray only
+      createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
       return;
     }
 
-    // other boxes: restrict to field margin as fallback
+    // fallback: require within field margin
     if (!isInsideRect(pos, FIELD_MARGIN)) return;
     createMarkerPercent(pos.xPct, pos.yPct, "#444", boxEl, true);
   }
@@ -575,6 +639,9 @@ document.addEventListener("DOMContentLoaded", () => {
       const img = box.querySelector("img");
       if (!img) return;
       box.style.position = "relative";
+
+      // Pre-create sampler for goal images (will populate when image loaded)
+      createImageSampler(img);
 
       let mouseHoldTimer = null;
       let isLong = false;
@@ -593,6 +660,7 @@ document.addEventListener("DOMContentLoaded", () => {
       // mouse
       img.addEventListener("mousedown", (ev) => {
         isLong = false;
+        if (mouseHoldTimer) clearTimeout(mouseHoldTimer);
         mouseHoldTimer = setTimeout(() => {
           isLong = true;
           const pos = getPosFromEvent(ev);
