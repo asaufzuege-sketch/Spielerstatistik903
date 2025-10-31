@@ -43,7 +43,6 @@
         <button id="resetTorbildBtn" class="top-btn danger-btn reset-btn">Reset</button>
       </div>
       <div style="flex:1"></div>
-      <!-- Export Season Map button on Torbild page -->
       <div style="display:flex;gap:8px;align-items:center;">
         <button id="exportSeasonMapBtn" class="top-btn">Export Season Map</button>
       </div>
@@ -52,7 +51,7 @@
     <div class="torbild-layout">
       <!-- Linke Spalte: Spielfeld -->
       <div class="field-column">
-        <div class="img-box field-box">
+        <div class="img-box field-box" id="fieldBox">
           <img src="Spielfeld Overlay.png" alt="Spielfeld Overlay" />
         </div>
       </div>
@@ -157,16 +156,12 @@
         <button id="backToStatsFromSeasonMapBtn" class="top-btn back-btn">← Zurück</button>
         <button id="resetSeasonMapBtn" class="top-btn danger-btn reset-btn">Reset</button>
       </div>
-      <div style="flex:1"></div>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <!-- optional: nothing here, keep layout symmetrical -->
-      </div>
     </div>
 
     <div class="torbild-layout">
       <!-- Linke Spalte: Spielfeld -->
       <div class="field-column">
-        <div class="img-box field-box">
+        <div class="img-box field-box" id="seasonFieldBox">
           <img src="Spielfeld Overlay.png" alt="Spielfeld Overlay" />
         </div>
       </div>
